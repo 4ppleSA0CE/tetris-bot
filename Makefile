@@ -8,7 +8,8 @@ all: $(BUILD)/CMakeCache.txt
 
 # ninja is not installed on this machine; the Unix Makefiles generator is required.
 $(BUILD)/CMakeCache.txt: CMakeLists.txt
-	$(CMAKE) -S . -B $(BUILD) -G "Unix Makefiles" -DCMAKE_BUILD_TYPE=RelWithDebInfo
+	$(CMAKE) -S . -B $(BUILD) -G "Unix Makefiles" -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+	ln -sf $(BUILD)/compile_commands.json compile_commands.json
 
 test: all
 	./$(BUILD)/tb_tests
