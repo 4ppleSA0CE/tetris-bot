@@ -15,6 +15,7 @@
 #include "core/srs_tables.h"
 #include "core/srs.h"
 #include "core/rng.h"
+#include "core/attack.h"
 
 static int g_testCount = 0;
 
@@ -794,6 +795,105 @@ static void test_bag_seed_zero_is_remapped_and_still_shuffles() {
     assert(sawDifferentBag);
 }
 
+// -------------------------------------------------------------- core/attack.h
+
+static tb::ClearInfo ci(int lines, tb::SpinKind spin, bool perfectClear) {
+    tb::ClearInfo c;
+    c.lines = static_cast<uint8_t>(lines);
+    c.spin = spin;
+    c.perfectClear = perfectClear;
+    return c;
+}
+
+static void test_attack_prd_table_without_b2b_or_combo() {
+    // PRD section 4.7, every row, b2b inactive and no combo.
+    assert(tb::computeAttack(ci(1, tb::SPIN_NONE, false), false, 0) == 0);   // single
+    assert(tb::computeAttack(ci(2, tb::SPIN_NONE, false), false, 0) == 1);   // double
+    assert(tb::computeAttack(ci(3, tb::SPIN_NONE, false), false, 0) == 2);   // triple
+    assert(tb::computeAttack(ci(4, tb::SPIN_NONE, false), false, 0) == 4);   // tetris
+    assert(tb::computeAttack(ci(1, tb::SPIN_MINI, false), false, 0) == 0);   // t-spin mini
+    assert(tb::computeAttack(ci(2, tb::SPIN_MINI, false), false, 0) == 0);   // t-spin mini
+    assert(tb::computeAttack(ci(1, tb::SPIN_FULL, false), false, 0) == 2);   // t-spin single
+    assert(tb::computeAttack(ci(2, tb::SPIN_FULL, false), false, 0) == 4);   // t-spin double
+    assert(tb::computeAttack(ci(3, tb::SPIN_FULL, false), false, 0) == 6);   // t-spin triple
+}
+
+static void test_attack_b2b_bonus_is_applied() {
+    // +1, and only when the clear is itself b2b-maintaining AND the chain was
+    // already live before this clear.
+    assert(tb::computeAttack(ci(4, tb::SPIN_NONE, false), true, 0) == 5);   // tetris
+    assert(tb::computeAttack(ci(1, tb::SPIN_FULL, false), true, 0) == 3);   // tss
+    assert(tb::computeAttack(ci(2, tb::SPIN_FULL, false), true, 0) == 5);   // tsd
+    assert(tb::computeAttack(ci(3, tb::SPIN_FULL, false), true, 0) == 7);   // tst
+    assert(tb::computeAttack(ci(1, tb::SPIN_MINI, false), true, 0) == 1);   // mini single
+}
+
+static void test_attack_b2b_bonus_is_not_applied() {
+    // An easy clear gets no bonus even with the chain live -- it breaks it.
+    assert(tb::computeAttack(ci(1, tb::SPIN_NONE, false), true, 0) == 0);   // single
+    assert(tb::computeAttack(ci(2, tb::SPIN_NONE, false), true, 0) == 1);   // double
+    assert(tb::computeAttack(ci(3, tb::SPIN_NONE, false), true, 0) == 2);   // triple
+    // And a difficult clear gets no bonus when the chain was not live.
+    assert(tb::computeAttack(ci(4, tb::SPIN_NONE, false), false, 0) == 4);
+    assert(tb::computeAttack(ci(2, tb::SPIN_FULL, false), false, 0) == 4);
+}
+
+static void test_b2bMaintaining_rules() {
+    assert(tb::b2bMaintaining(ci(4, tb::SPIN_NONE, false)));    // tetris
+    assert(tb::b2bMaintaining(ci(1, tb::SPIN_FULL, false)));
+    assert(tb::b2bMaintaining(ci(2, tb::SPIN_FULL, false)));
+    assert(tb::b2bMaintaining(ci(3, tb::SPIN_FULL, false)));
+    assert(!tb::b2bMaintaining(ci(1, tb::SPIN_NONE, false)));   // single
+    assert(!tb::b2bMaintaining(ci(2, tb::SPIN_NONE, false)));   // double
+    assert(!tb::b2bMaintaining(ci(3, tb::SPIN_NONE, false)));   // triple
+    // Zero-line placements are neutral, never maintaining -- the caller must
+    // leave the flag alone rather than setting or clearing it.
+    assert(!tb::b2bMaintaining(ci(0, tb::SPIN_NONE, false)));
+    assert(!tb::b2bMaintaining(ci(0, tb::SPIN_MINI, false)));
+    assert(!tb::b2bMaintaining(ci(0, tb::SPIN_FULL, false)));
+}
+
+static void test_b2b_is_maintained_by_a_mini_that_clears_lines() {
+    // AMENDED RULE. A T-spin mini that clears lines is "difficult": it extends
+    // an existing chain and starts a new one. Gate on
+    // (lines > 0 && spin != SPIN_NONE), never on spin == SPIN_FULL.
+    assert(tb::b2bMaintaining(ci(1, tb::SPIN_MINI, false)));
+    assert(tb::b2bMaintaining(ci(2, tb::SPIN_MINI, false)));
+    // A mini clearing nothing stays neutral.
+    assert(!tb::b2bMaintaining(ci(0, tb::SPIN_MINI, false)));
+}
+
+static void test_attack_combo_table_indexing() {
+    // Combo bonus {0,0,1,1,1,2,2,3,3,4,4,4,5}, indexed by the number of
+    // consecutive PRIOR clears. A double has base 1, so expect base + bonus.
+    const int bonus[13] = {0, 0, 1, 1, 1, 2, 2, 3, 3, 4, 4, 4, 5};
+    for (int combo = 0; combo < 13; ++combo)
+        assert(tb::computeAttack(ci(2, tb::SPIN_NONE, false), false, combo) == 1 + bonus[combo]);
+    // A negative count is clamped to the first entry.
+    assert(tb::computeAttack(ci(2, tb::SPIN_NONE, false), false, -1) == 1);
+}
+
+static void test_attack_combo_clamps_at_the_last_entry() {
+    const int atTwelve = tb::computeAttack(ci(2, tb::SPIN_NONE, false), false, 12);
+    assert(atTwelve == 6);   // base 1 + bonus 5
+    assert(tb::computeAttack(ci(2, tb::SPIN_NONE, false), false, 13) == atTwelve);
+    assert(tb::computeAttack(ci(2, tb::SPIN_NONE, false), false, 50) == atTwelve);
+    assert(tb::computeAttack(ci(2, tb::SPIN_NONE, false), false, 100000) == atTwelve);
+}
+
+static void test_attack_perfect_clear_adds_ten() {
+    assert(tb::computeAttack(ci(4, tb::SPIN_NONE, true), false, 0) == 14);
+    assert(tb::computeAttack(ci(1, tb::SPIN_NONE, true), false, 0) == 10);
+    // Stacks with the b2b bonus and the combo bonus.
+    assert(tb::computeAttack(ci(4, tb::SPIN_NONE, true), true, 5) == 4 + 1 + 2 + 10);
+}
+
+static void test_attack_is_zero_when_no_lines_clear() {
+    assert(tb::computeAttack(ci(0, tb::SPIN_NONE, false), true, 8) == 0);
+    assert(tb::computeAttack(ci(0, tb::SPIN_MINI, false), true, 8) == 0);
+    assert(tb::computeAttack(ci(0, tb::SPIN_FULL, false), true, 8) == 0);
+}
+
 int main() {
     RUN(test_types_constants);
     RUN(test_piece_cells_spawn_shapes);
@@ -840,6 +940,15 @@ int main() {
     RUN(test_bag_different_seeds_diverge);
     RUN(test_bag_reset_replays_the_same_sequence);
     RUN(test_bag_seed_zero_is_remapped_and_still_shuffles);
+    RUN(test_attack_prd_table_without_b2b_or_combo);
+    RUN(test_attack_b2b_bonus_is_applied);
+    RUN(test_attack_b2b_bonus_is_not_applied);
+    RUN(test_b2bMaintaining_rules);
+    RUN(test_b2b_is_maintained_by_a_mini_that_clears_lines);
+    RUN(test_attack_combo_table_indexing);
+    RUN(test_attack_combo_clamps_at_the_last_entry);
+    RUN(test_attack_perfect_clear_adds_ten);
+    RUN(test_attack_is_zero_when_no_lines_clear);
     std::printf("all %d tests passed\n", g_testCount);
     return 0;
 }

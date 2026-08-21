@@ -17,6 +17,7 @@ set(TB_CORE_SOURCES
     core/board.cpp
     core/srs.cpp
     core/rng.cpp
+    core/attack.cpp
 )
 
 # Shared include dir and warning flags. Every target links this, so a new target
