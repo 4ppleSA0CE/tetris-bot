@@ -11,6 +11,7 @@
 
 #include "core/types.h"
 #include "core/piece.h"
+#include "core/board.h"
 
 static int g_testCount = 0;
 
@@ -143,6 +144,72 @@ static void test_piece_cells_o_never_changes() {
     }
 }
 
+// ---------------------------------------------------------------- core/board.h
+
+static void test_boardFromAscii_maps_first_row_to_top() {
+    // rows[0] is the TOP row. With 3 rows given, rows[2] becomes board y = 0.
+    const char* rows[] = {
+        "..........",   // y = 2
+        "#........#",   // y = 1
+        ".#########",   // y = 0
+    };
+    const tb::Board b = tb::boardFromAscii(rows, 3);
+    assert(b.rows[0] == 0x3FE);   // bits 1..9 set, bit 0 clear
+    assert(b.rows[1] == 0x201);   // bits 0 and 9 set
+    assert(b.rows[2] == 0x000);
+    assert(b.rows[3] == 0x000);
+    assert(b.rows[tb::BOARD_H - 1] == 0x000);
+}
+
+static void test_boardFromAscii_full_row_equals_FULL_ROW() {
+    const char* rows[] = { "##########" };
+    const tb::Board b = tb::boardFromAscii(rows, 1);
+    assert(b.rows[0] == tb::FULL_ROW);
+}
+
+static void test_collides_left_wall() {
+    const tb::Board empty{};
+    // O occupies columns x and x+1.
+    assert(!tb::collides(empty, tb::PIECE_O, tb::ROT_0, 0, 0));
+    assert(tb::collides(empty, tb::PIECE_O, tb::ROT_0, -1, 0));
+    // I in ROT_0 occupies columns x .. x+3.
+    assert(!tb::collides(empty, tb::PIECE_I, tb::ROT_0, 0, 0));
+    assert(tb::collides(empty, tb::PIECE_I, tb::ROT_0, -1, 0));
+}
+
+static void test_collides_right_wall() {
+    const tb::Board empty{};
+    assert(!tb::collides(empty, tb::PIECE_O, tb::ROT_0, 8, 0));
+    assert(tb::collides(empty, tb::PIECE_O, tb::ROT_0, 9, 0));
+    assert(!tb::collides(empty, tb::PIECE_I, tb::ROT_0, 6, 0));
+    assert(tb::collides(empty, tb::PIECE_I, tb::ROT_0, 7, 0));
+}
+
+static void test_collides_floor_and_ceiling() {
+    const tb::Board empty{};
+    // O has cells in its box bottom row, so y = -1 puts a cell below the floor.
+    assert(!tb::collides(empty, tb::PIECE_O, tb::ROT_0, 4, 0));
+    assert(tb::collides(empty, tb::PIECE_O, tb::ROT_0, 4, -1));
+    // T in ROT_0 has NO cell in its box bottom row, so y = -1 is legal for it.
+    assert(!tb::collides(empty, tb::PIECE_T, tb::ROT_0, 3, -1));
+    assert(tb::collides(empty, tb::PIECE_T, tb::ROT_0, 3, -2));
+    // Above the allocated 40 rows counts as occupied.
+    assert(!tb::collides(empty, tb::PIECE_I, tb::ROT_0, 3, tb::BOARD_H - 3));
+    assert(tb::collides(empty, tb::PIECE_I, tb::ROT_0, 3, tb::BOARD_H - 2));
+}
+
+static void test_collides_existing_stack() {
+    const char* rows[] = {
+        "....#.....",   // y = 1
+        "##########",   // y = 0
+    };
+    const tb::Board b = tb::boardFromAscii(rows, 2);
+    assert(tb::collides(b, tb::PIECE_O, tb::ROT_0, 4, 0));   // sits on the full row
+    assert(tb::collides(b, tb::PIECE_O, tb::ROT_0, 4, 1));   // hits the lone cell at (4,1)
+    assert(!tb::collides(b, tb::PIECE_O, tb::ROT_0, 6, 1));  // clear of both
+    assert(!tb::collides(b, tb::PIECE_O, tb::ROT_0, 4, 2));  // clear above everything
+}
+
 int main() {
     RUN(test_types_constants);
     RUN(test_piece_cells_spawn_shapes);
@@ -150,6 +217,12 @@ int main() {
     RUN(test_piece_cells_rotation_is_cw_in_box);
     RUN(test_piece_cells_fit_box_and_are_distinct);
     RUN(test_piece_cells_o_never_changes);
+    RUN(test_boardFromAscii_maps_first_row_to_top);
+    RUN(test_boardFromAscii_full_row_equals_FULL_ROW);
+    RUN(test_collides_left_wall);
+    RUN(test_collides_right_wall);
+    RUN(test_collides_floor_and_ceiling);
+    RUN(test_collides_existing_stack);
     std::printf("all %d tests passed\n", g_testCount);
     return 0;
 }
