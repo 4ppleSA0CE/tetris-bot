@@ -623,6 +623,80 @@ static void test_rotate_to_the_same_rotation_is_rejected() {
     assert(ox == -99 && oy == -99 && k == 255);
 }
 
+// -------------------------------------------------- core/srs.h: 180 rotation
+
+static void test_kick_case5_180_floor_kick() {
+    // Empty board. A T rests flat on the floor at box origin (3,-1) -- legal,
+    // because T in ROT_0 has no cells in its box's bottom row, so its cells are
+    // (4,1),(3,0),(4,0),(5,0). A 180 in place would push the nub to y = -1, so
+    // KICKS_180 test 1 (0,+1) must lift it one row.
+    const tb::Board empty{};
+    assert(!tb::collides(empty, tb::PIECE_T, tb::ROT_0, 3, -1));
+    expectKickTestCollides(empty, tb::PIECE_T, tb::ROT_2, 3, -1, 0, 0);
+
+    int ox = -99, oy = -99;
+    uint8_t k = 255;
+    assert(tb::tryRotate(empty, tb::PIECE_T, tb::ROT_0, tb::ROT_2, 3, -1, &ox, &oy, &k));
+    assert(ox == 3);
+    assert(oy == 0);
+    assert(k == 1);
+
+    // Grounded, and the resulting cells are (3,1),(4,1),(5,1),(4,0).
+    assert(tb::collides(empty, tb::PIECE_T, tb::ROT_2, ox, oy - 1));
+    tb::Board b = empty;
+    tb::lockPiece(b, tb::PIECE_T, tb::ROT_2, ox, oy);
+    assert(b.rows[1] == 0x038);
+    assert(b.rows[0] == 0x010);
+    assert(tb::clearLines(b) == 0);
+}
+
+static void test_180_in_open_space_uses_test_zero() {
+    const tb::Board empty{};
+    int ox = -99, oy = -99;
+    uint8_t k = 255;
+    assert(tb::tryRotate(empty, tb::PIECE_T, tb::ROT_0, tb::ROT_2, 3, 5, &ox, &oy, &k));
+    assert(ox == 3 && oy == 5 && k == 0);
+
+    ox = -99; oy = -99; k = 255;
+    assert(tb::tryRotate(empty, tb::PIECE_S, tb::ROT_R, tb::ROT_L, 3, 5, &ox, &oy, &k));
+    assert(ox == 3 && oy == 5 && k == 0);
+
+    ox = -99; oy = -99; k = 255;
+    assert(tb::tryRotate(empty, tb::PIECE_Z, tb::ROT_2, tb::ROT_0, 3, 5, &ox, &oy, &k));
+    assert(ox == 3 && oy == 5 && k == 0);
+
+    ox = -99; oy = -99; k = 255;
+    assert(tb::tryRotate(empty, tb::PIECE_J, tb::ROT_L, tb::ROT_R, 3, 5, &ox, &oy, &k));
+    assert(ox == 3 && oy == 5 && k == 0);
+}
+
+static void test_180_i_piece_has_exactly_one_test() {
+    const tb::Board empty{};
+    int ox = -99, oy = -99;
+    uint8_t k = 255;
+    assert(tb::tryRotate(empty, tb::PIECE_I, tb::ROT_0, tb::ROT_2, 3, 5, &ox, &oy, &k));
+    assert(ox == 3 && oy == 5 && k == 0);
+}
+
+static void test_180_i_piece_is_rejected_when_its_only_test_collides() {
+    // I in ROT_0 sits at y+2; ROT_2 puts it at y+1, which is a full row here.
+    // The I 180 table has no second test, so the rotation must be refused --
+    // an implementation that reuses the JLSTZ 180 table would kick and pass.
+    const char* rows[] = {
+        "..........",   // y = 2
+        "##########",   // y = 1
+        "..........",   // y = 0
+    };
+    const tb::Board b = tb::boardFromAscii(rows, 3);
+    assert(!tb::collides(b, tb::PIECE_I, tb::ROT_0, 3, 0));
+    assert(tb::collides(b, tb::PIECE_I, tb::ROT_2, 3, 0));
+
+    int ox = -99, oy = -99;
+    uint8_t k = 255;
+    assert(!tb::tryRotate(b, tb::PIECE_I, tb::ROT_0, tb::ROT_2, 3, 0, &ox, &oy, &k));
+    assert(ox == -99 && oy == -99 && k == 255);
+}
+
 int main() {
     RUN(test_types_constants);
     RUN(test_piece_cells_spawn_shapes);
@@ -659,6 +733,10 @@ int main() {
     RUN(test_rotate_o_never_kicks);
     RUN(test_rotate_rejected_when_every_test_collides);
     RUN(test_rotate_to_the_same_rotation_is_rejected);
+    RUN(test_kick_case5_180_floor_kick);
+    RUN(test_180_in_open_space_uses_test_zero);
+    RUN(test_180_i_piece_has_exactly_one_test);
+    RUN(test_180_i_piece_is_rejected_when_its_only_test_collides);
     std::printf("all %d tests passed\n", g_testCount);
     return 0;
 }
