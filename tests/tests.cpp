@@ -284,6 +284,70 @@ static void test_clearLines_four_rows_is_a_tetris() {
     for (int y = 0; y < tb::BOARD_H; ++y) assert(b.rows[y] == 0);
 }
 
+// -------------------------------------- core/board.h: drop, heights, emptiness
+
+static void test_dropY_falls_to_the_floor_on_an_empty_board() {
+    const tb::Board empty{};
+    // O has cells in its box bottom row, so it rests at y = 0.
+    assert(tb::dropY(empty, tb::PIECE_O, tb::ROT_0, 4, 21) == 0);
+    // T in ROT_0 has none, so its box origin rests one below the floor.
+    assert(tb::dropY(empty, tb::PIECE_T, tb::ROT_0, 3, 21) == -1);
+}
+
+static void test_dropY_lands_on_a_stack() {
+    const char* rows[] = {
+        "#.........",   // y = 2
+        "#.........",   // y = 1
+        "#.........",   // y = 0
+    };
+    const tb::Board b = tb::boardFromAscii(rows, 3);
+    // O spans columns 0 and 1; column 0 is filled to y = 2, so it rests at y = 3.
+    assert(tb::dropY(b, tb::PIECE_O, tb::ROT_0, 0, 21) == 3);
+    // Clear of the tower, it falls all the way.
+    assert(tb::dropY(b, tb::PIECE_O, tb::ROT_0, 4, 21) == 0);
+}
+
+static void test_dropY_is_idempotent_at_rest() {
+    const tb::Board empty{};
+    const int y = tb::dropY(empty, tb::PIECE_O, tb::ROT_0, 4, 21);
+    assert(tb::dropY(empty, tb::PIECE_O, tb::ROT_0, 4, y) == y);
+}
+
+static void test_columnHeight() {
+    const char* rows[] = {
+        "#.........",   // y = 2
+        "#.........",   // y = 1
+        "#.#.......",   // y = 0
+    };
+    const tb::Board b = tb::boardFromAscii(rows, 3);
+    assert(tb::columnHeight(b, 0) == 3);
+    assert(tb::columnHeight(b, 1) == 0);
+    assert(tb::columnHeight(b, 2) == 1);
+    assert(tb::columnHeight(b, 9) == 0);
+    const tb::Board empty{};
+    for (int c = 0; c < tb::BOARD_W; ++c) assert(tb::columnHeight(empty, c) == 0);
+}
+
+static void test_columnHeight_counts_over_a_hole() {
+    const char* rows[] = {
+        "#.........",   // y = 1
+        "..........",   // y = 0   <- hole underneath
+    };
+    const tb::Board b = tb::boardFromAscii(rows, 2);
+    assert(tb::columnHeight(b, 0) == 2);
+}
+
+static void test_isEmpty() {
+    tb::Board b{};
+    assert(tb::isEmpty(b));
+    tb::lockPiece(b, tb::PIECE_O, tb::ROT_0, 4, 0);
+    assert(!tb::isEmpty(b));
+    (void)tb::clearLines(b);
+    assert(!tb::isEmpty(b));   // an O alone never fills a row
+    b = tb::Board{};
+    assert(tb::isEmpty(b));
+}
+
 int main() {
     RUN(test_types_constants);
     RUN(test_piece_cells_spawn_shapes);
@@ -302,6 +366,12 @@ int main() {
     RUN(test_clearLines_single_row_shifts_above_down_by_one);
     RUN(test_clearLines_two_non_adjacent_rows);
     RUN(test_clearLines_four_rows_is_a_tetris);
+    RUN(test_dropY_falls_to_the_floor_on_an_empty_board);
+    RUN(test_dropY_lands_on_a_stack);
+    RUN(test_dropY_is_idempotent_at_rest);
+    RUN(test_columnHeight);
+    RUN(test_columnHeight_counts_over_a_hole);
+    RUN(test_isEmpty);
     std::printf("all %d tests passed\n", g_testCount);
     return 0;
 }

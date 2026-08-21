@@ -42,6 +42,25 @@ int clearLines(Board& b) {
     return removed;
 }
 
+int dropY(const Board& b, PieceType p, Rot r, int x, int y) {
+    // Terminates: collides() reports the floor as occupied, so the walk stops.
+    while (!collides(b, p, r, x, y - 1)) --y;
+    return y;
+}
+
+int columnHeight(const Board& b, int col) {
+    const uint16_t mask = static_cast<uint16_t>(1u << col);
+    for (int y = BOARD_H - 1; y >= 0; --y)
+        if (b.rows[y] & mask) return y + 1;
+    return 0;
+}
+
+bool isEmpty(const Board& b) {
+    for (int y = 0; y < BOARD_H; ++y)
+        if (b.rows[y] != 0) return false;
+    return true;
+}
+
 Board boardFromAscii(const char* const* rows, int nRows) {
     Board b{};
     for (int i = 0; i < nRows; ++i) {
