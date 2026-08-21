@@ -43,6 +43,10 @@ int clearLines(Board& b) {
 }
 
 int dropY(const Board& b, PieceType p, Rot r, int x, int y) {
+    // Precondition: (x, y) must not already collide. Violating it silently
+    // returns the caller's own y -- and the search evaluates many candidates
+    // without ever locking them, so lockPiece's assert would never see it.
+    assert(!collides(b, p, r, x, y));
     // Terminates: collides() reports the floor as occupied, so the walk stops.
     while (!collides(b, p, r, x, y - 1)) --y;
     return y;
