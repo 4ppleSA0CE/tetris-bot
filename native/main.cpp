@@ -64,7 +64,18 @@ int main(int argc, char** argv) {
         if (std::strcmp(argv[i], "--seed") == 0 && i + 1 < argc) {
             seed = static_cast<uint32_t>(std::strtoul(argv[++i], nullptr, 10));
         } else if (std::strcmp(argv[i], "--pieces") == 0 && i + 1 < argc) {
-            pieces = std::atoi(argv[++i]);
+            // atoi() would turn "abc" into 0 and accept "-5", either of which
+            // runs the loop zero times and prints an all-zero stats block that
+            // is shape-identical to a real run. Scripted weight-tuning sweeps
+            // would silently record that as data, so reject it loudly instead.
+            char* end = nullptr;
+            const long v = std::strtol(argv[++i], &end, 10);
+            if (end == argv[i] || *end != '\0' || v <= 0) {
+                std::fprintf(stderr, "--pieces must be a positive integer: %s\n", argv[i]);
+                usage();
+                return 2;
+            }
+            pieces = static_cast<int>(v);
         } else if (std::strcmp(argv[i], "--print") == 0) {
             doPrint = true;
         } else if (std::strcmp(argv[i], "--stats") == 0) {
