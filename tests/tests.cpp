@@ -14,6 +14,7 @@
 #include "core/board.h"
 #include "core/srs_tables.h"
 #include "core/srs.h"
+#include "core/rng.h"
 
 static int g_testCount = 0;
 
@@ -697,6 +698,102 @@ static void test_180_i_piece_is_rejected_when_its_only_test_collides() {
     assert(ox == -99 && oy == -99 && k == 255);
 }
 
+// ----------------------------------------------------------------- core/rng.h
+
+static void test_xorshift32_is_deterministic_and_never_zero() {
+    uint32_t a = 12345;
+    uint32_t b = 12345;
+    for (int i = 0; i < 1000; ++i) {
+        const uint32_t va = tb::xorshift32(a);
+        const uint32_t vb = tb::xorshift32(b);
+        assert(va == vb);
+        assert(va != 0);
+        assert(a == va);   // the state is advanced in place
+    }
+    uint32_t c = 99;
+    uint32_t first = tb::xorshift32(c);
+    uint32_t second = tb::xorshift32(c);
+    assert(first != second);
+}
+
+static void test_bag_every_seven_pieces_is_a_permutation() {
+    tb::Bag bag(20260821u);
+    for (int b = 0; b < 100; ++b) {
+        int seen[tb::NUM_PIECES] = {0, 0, 0, 0, 0, 0, 0};
+        for (int i = 0; i < 7; ++i) {
+            const tb::PieceType p = bag.next();
+            assert(p >= 0);
+            assert(p < tb::NUM_PIECES);
+            ++seen[static_cast<int>(p)];
+        }
+        for (int i = 0; i < tb::NUM_PIECES; ++i) assert(seen[i] == 1);
+    }
+}
+
+static void test_bag_same_seed_same_sequence() {
+    tb::Bag a(7u);
+    tb::Bag b(7u);
+    for (int i = 0; i < 700; ++i) assert(a.next() == b.next());
+}
+
+static void test_bag_different_seeds_diverge() {
+    tb::Bag a(7u);
+    tb::Bag b(8u);
+    bool differs = false;
+    for (int i = 0; i < 700; ++i)
+        if (a.next() != b.next()) differs = true;
+    assert(differs);
+}
+
+static void test_bag_reset_replays_the_same_sequence() {
+    tb::Bag bag(4242u);
+    tb::PieceType first[70];
+    for (int i = 0; i < 70; ++i) first[i] = bag.next();
+    bag.reset(4242u);
+    for (int i = 0; i < 70; ++i) assert(bag.next() == first[i]);
+    bag.reset(4243u);
+    bool differs = false;
+    for (int i = 0; i < 70; ++i)
+        if (bag.next() != first[i]) differs = true;
+    assert(differs);
+}
+
+static void test_bag_seed_zero_is_remapped_and_still_shuffles() {
+    // A raw xorshift32 seeded with 0 is a fixed point -- it returns 0 forever.
+    // Every Fisher-Yates index then becomes 0, and the shuffle degenerates into
+    // the SAME fixed rotation (1,2,3,4,5,6,0) on every single bag.
+    //
+    // Note what that rotation is NOT: it is not piece order, and it is a valid
+    // permutation. So asserting "some bag is not in piece order", or asserting
+    // each bag is a permutation, both PASS against the broken implementation.
+    // The property that actually separates them is that the broken one emits
+    // the IDENTICAL bag every time, while a correctly remapped seed produces
+    // ~96 distinct orderings per 100 bags.
+    //
+    // Seed 0 must be remapped to 0x9E3779B9.
+    tb::Bag zero(0u);
+
+    tb::PieceType firstBag[7];
+    int firstSeen[tb::NUM_PIECES] = {0, 0, 0, 0, 0, 0, 0};
+    for (int i = 0; i < 7; ++i) {
+        firstBag[i] = zero.next();
+        ++firstSeen[static_cast<int>(firstBag[i])];
+    }
+    for (int i = 0; i < tb::NUM_PIECES; ++i) assert(firstSeen[i] == 1);
+
+    bool sawDifferentBag = false;
+    for (int b = 1; b < 100; ++b) {
+        int seen[tb::NUM_PIECES] = {0, 0, 0, 0, 0, 0, 0};
+        for (int i = 0; i < 7; ++i) {
+            const tb::PieceType p = zero.next();
+            ++seen[static_cast<int>(p)];
+            if (p != firstBag[i]) sawDifferentBag = true;
+        }
+        for (int i = 0; i < tb::NUM_PIECES; ++i) assert(seen[i] == 1);
+    }
+    assert(sawDifferentBag);
+}
+
 int main() {
     RUN(test_types_constants);
     RUN(test_piece_cells_spawn_shapes);
@@ -737,6 +834,12 @@ int main() {
     RUN(test_180_in_open_space_uses_test_zero);
     RUN(test_180_i_piece_has_exactly_one_test);
     RUN(test_180_i_piece_is_rejected_when_its_only_test_collides);
+    RUN(test_xorshift32_is_deterministic_and_never_zero);
+    RUN(test_bag_every_seven_pieces_is_a_permutation);
+    RUN(test_bag_same_seed_same_sequence);
+    RUN(test_bag_different_seeds_diverge);
+    RUN(test_bag_reset_replays_the_same_sequence);
+    RUN(test_bag_seed_zero_is_remapped_and_still_shuffles);
     std::printf("all %d tests passed\n", g_testCount);
     return 0;
 }
