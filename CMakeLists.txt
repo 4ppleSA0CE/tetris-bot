@@ -15,6 +15,7 @@ endif()
 set(TB_CORE_SOURCES
     core/piece.cpp
     core/board.cpp
+    core/srs.cpp
 )
 
 # Shared include dir and warning flags. Every target links this, so a new target

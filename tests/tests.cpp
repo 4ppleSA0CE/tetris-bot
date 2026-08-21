@@ -13,6 +13,7 @@
 #include "core/piece.h"
 #include "core/board.h"
 #include "core/srs_tables.h"
+#include "core/srs.h"
 
 static int g_testCount = 0;
 
@@ -443,6 +444,185 @@ static void test_kick_180_every_offset_is_within_one_column_and_two_rows() {
     }
 }
 
+// ----------------------------------------------------------------- core/srs.h
+
+// Assert that the candidate position for one kick test collides, i.e. that this
+// test is skipped. `to` is the rotation being rotated INTO.
+static void expectKickTestCollides(const tb::Board& b, tb::PieceType p, tb::Rot to,
+                                   int x, int y, int dx, int dy) {
+    assert(tb::collides(b, p, to, x + dx, y + dy));
+}
+
+static void test_kick_case1_tspin_triple() {
+    // T, 0 -> L (table row 7), from (3,2). Tests 0..3 collide; test 4 (+1,-2)
+    // lands the piece at (4,0), grounded, clearing rows 0, 1 and 2.
+    const char* rows[] = {
+        ".....#####",   // y = 4
+        "......####",   // y = 3
+        "#####.####",   // y = 2
+        "####..####",   // y = 1
+        "#####.####",   // y = 0
+    };
+    tb::Board b = tb::boardFromAscii(rows, 5);
+    assert(!tb::collides(b, tb::PIECE_T, tb::ROT_0, 3, 2));
+    expectKickTestCollides(b, tb::PIECE_T, tb::ROT_L, 3, 2, 0, 0);
+    expectKickTestCollides(b, tb::PIECE_T, tb::ROT_L, 3, 2, 1, 0);
+    expectKickTestCollides(b, tb::PIECE_T, tb::ROT_L, 3, 2, 1, 1);
+    expectKickTestCollides(b, tb::PIECE_T, tb::ROT_L, 3, 2, 0, -2);
+
+    int ox = -99, oy = -99;
+    uint8_t k = 255;
+    assert(tb::tryRotate(b, tb::PIECE_T, tb::ROT_0, tb::ROT_L, 3, 2, &ox, &oy, &k));
+    assert(ox == 4);
+    assert(oy == 0);
+    assert(k == 4);
+
+    assert(tb::collides(b, tb::PIECE_T, tb::ROT_L, ox, oy - 1));   // grounded
+    tb::lockPiece(b, tb::PIECE_T, tb::ROT_L, ox, oy);
+    assert(tb::clearLines(b) == 3);
+}
+
+static void test_kick_case2_s_piece() {
+    // S, 0 -> R (table row 0), from (4,2). Tests 0..3 collide; test 4 (-1,-2)
+    // lands the piece at (3,0), grounded, clearing rows 0 and 1.
+    const char* rows[] = {
+        "#####.....",   // y = 4
+        "####......",   // y = 3
+        "####.####.",   // y = 2
+        "####..####",   // y = 1
+        "#####.####",   // y = 0
+    };
+    tb::Board b = tb::boardFromAscii(rows, 5);
+    assert(!tb::collides(b, tb::PIECE_S, tb::ROT_0, 4, 2));
+    expectKickTestCollides(b, tb::PIECE_S, tb::ROT_R, 4, 2, 0, 0);
+    expectKickTestCollides(b, tb::PIECE_S, tb::ROT_R, 4, 2, -1, 0);
+    expectKickTestCollides(b, tb::PIECE_S, tb::ROT_R, 4, 2, -1, 1);
+    expectKickTestCollides(b, tb::PIECE_S, tb::ROT_R, 4, 2, 0, -2);
+
+    int ox = -99, oy = -99;
+    uint8_t k = 255;
+    assert(tb::tryRotate(b, tb::PIECE_S, tb::ROT_0, tb::ROT_R, 4, 2, &ox, &oy, &k));
+    assert(ox == 3);
+    assert(oy == 0);
+    assert(k == 4);
+
+    assert(tb::collides(b, tb::PIECE_S, tb::ROT_R, ox, oy - 1));   // grounded
+    tb::lockPiece(b, tb::PIECE_S, tb::ROT_R, ox, oy);
+    assert(tb::clearLines(b) == 2);
+}
+
+static void test_kick_case3_z_piece_mirrors_case2() {
+    // Z, 0 -> L (table row 7), from (3,2). Exact mirror of the S case: if one
+    // passes and the other fails, the sign error is isolated to one table row.
+    const char* rows[] = {
+        ".....#####",   // y = 4
+        "......####",   // y = 3
+        ".####.####",   // y = 2
+        "####..####",   // y = 1
+        "####.#####",   // y = 0
+    };
+    tb::Board b = tb::boardFromAscii(rows, 5);
+    assert(!tb::collides(b, tb::PIECE_Z, tb::ROT_0, 3, 2));
+    expectKickTestCollides(b, tb::PIECE_Z, tb::ROT_L, 3, 2, 0, 0);
+    expectKickTestCollides(b, tb::PIECE_Z, tb::ROT_L, 3, 2, 1, 0);
+    expectKickTestCollides(b, tb::PIECE_Z, tb::ROT_L, 3, 2, 1, 1);
+    expectKickTestCollides(b, tb::PIECE_Z, tb::ROT_L, 3, 2, 0, -2);
+
+    int ox = -99, oy = -99;
+    uint8_t k = 255;
+    assert(tb::tryRotate(b, tb::PIECE_Z, tb::ROT_0, tb::ROT_L, 3, 2, &ox, &oy, &k));
+    assert(ox == 4);
+    assert(oy == 0);
+    assert(k == 4);
+
+    assert(tb::collides(b, tb::PIECE_Z, tb::ROT_L, ox, oy - 1));   // grounded
+    tb::lockPiece(b, tb::PIECE_Z, tb::ROT_L, ox, oy);
+    assert(tb::clearLines(b) == 2);
+}
+
+static void test_kick_case4_i_piece_asserts_test_order() {
+    // I, 0 -> R (table row 0), from (4,2). Tests 0..2 collide; test 3 (-2,-1)
+    // wins at (2,1). Test 4 (+1,+2) would ALSO be legal -- so this case asserts
+    // ORDER, not membership. Scanning the row backwards returns (5,4) and fails.
+    const char* rows[] = {
+        "....#.....",   // y = 5
+        "..........",   // y = 4
+        "####.#####",   // y = 3
+        "####.#####",   // y = 2
+        "####.#####",   // y = 1
+        "#########.",   // y = 0
+    };
+    tb::Board b = tb::boardFromAscii(rows, 6);
+    assert(!tb::collides(b, tb::PIECE_I, tb::ROT_0, 4, 2));
+    expectKickTestCollides(b, tb::PIECE_I, tb::ROT_R, 4, 2, 0, 0);
+    expectKickTestCollides(b, tb::PIECE_I, tb::ROT_R, 4, 2, -2, 0);
+    expectKickTestCollides(b, tb::PIECE_I, tb::ROT_R, 4, 2, 1, 0);
+    assert(!tb::collides(b, tb::PIECE_I, tb::ROT_R, 4 + 1, 2 + 2));   // test 4 is legal
+
+    int ox = -99, oy = -99;
+    uint8_t k = 255;
+    assert(tb::tryRotate(b, tb::PIECE_I, tb::ROT_0, tb::ROT_R, 4, 2, &ox, &oy, &k));
+    assert(ox == 2);
+    assert(oy == 1);
+    assert(k == 3);
+
+    assert(tb::collides(b, tb::PIECE_I, tb::ROT_R, ox, oy - 1));   // grounded
+    tb::lockPiece(b, tb::PIECE_I, tb::ROT_R, ox, oy);
+    assert(tb::clearLines(b) == 3);
+}
+
+static void test_rotate_o_never_kicks() {
+    const tb::Board empty{};
+    for (int from = 0; from < 4; ++from) {
+        for (int to = 0; to < 4; ++to) {
+            if (from == to) continue;
+            int ox = -99, oy = -99;
+            uint8_t k = 255;
+            const bool ok = tb::tryRotate(empty, tb::PIECE_O,
+                                          static_cast<tb::Rot>(from),
+                                          static_cast<tb::Rot>(to),
+                                          4, 3, &ox, &oy, &k);
+            assert(ok);
+            assert(ox == 4);   // never moves
+            assert(oy == 3);
+            assert(k == 0);
+        }
+    }
+}
+
+static void test_rotate_rejected_when_every_test_collides() {
+    // A T wedged into a slot exactly its own shape. All five 0->R tests hit
+    // something, so the rotation is refused and the outputs stay untouched.
+    const char* rows[] = {
+        "##.#######",   // y = 3
+        "#...######",   // y = 2
+        "##########",   // y = 1
+        "##########",   // y = 0
+    };
+    const tb::Board b = tb::boardFromAscii(rows, 4);
+    assert(!tb::collides(b, tb::PIECE_T, tb::ROT_0, 1, 1));
+    expectKickTestCollides(b, tb::PIECE_T, tb::ROT_R, 1, 1, 0, 0);
+    expectKickTestCollides(b, tb::PIECE_T, tb::ROT_R, 1, 1, -1, 0);
+    expectKickTestCollides(b, tb::PIECE_T, tb::ROT_R, 1, 1, -1, 1);
+    expectKickTestCollides(b, tb::PIECE_T, tb::ROT_R, 1, 1, 0, -2);
+    expectKickTestCollides(b, tb::PIECE_T, tb::ROT_R, 1, 1, -1, -2);
+
+    int ox = -99, oy = -99;
+    uint8_t k = 255;
+    assert(!tb::tryRotate(b, tb::PIECE_T, tb::ROT_0, tb::ROT_R, 1, 1, &ox, &oy, &k));
+    assert(ox == -99);
+    assert(oy == -99);
+    assert(k == 255);
+}
+
+static void test_rotate_to_the_same_rotation_is_rejected() {
+    const tb::Board empty{};
+    int ox = -99, oy = -99;
+    uint8_t k = 255;
+    assert(!tb::tryRotate(empty, tb::PIECE_T, tb::ROT_0, tb::ROT_0, 4, 3, &ox, &oy, &k));
+    assert(ox == -99 && oy == -99 && k == 255);
+}
+
 int main() {
     RUN(test_types_constants);
     RUN(test_piece_cells_spawn_shapes);
@@ -472,6 +652,13 @@ int main() {
     RUN(test_kick_table_i_duplicate_structure);
     RUN(test_kick_table_spot_checks);
     RUN(test_kick_180_every_offset_is_within_one_column_and_two_rows);
+    RUN(test_kick_case1_tspin_triple);
+    RUN(test_kick_case2_s_piece);
+    RUN(test_kick_case3_z_piece_mirrors_case2);
+    RUN(test_kick_case4_i_piece_asserts_test_order);
+    RUN(test_rotate_o_never_kicks);
+    RUN(test_rotate_rejected_when_every_test_collides);
+    RUN(test_rotate_to_the_same_rotation_is_rejected);
     std::printf("all %d tests passed\n", g_testCount);
     return 0;
 }
