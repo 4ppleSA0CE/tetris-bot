@@ -2,6 +2,8 @@
 
 #include "core/piece.h"
 
+#include <cassert>
+
 namespace tb {
 
 bool collides(const Board& b, PieceType p, Rot r, int x, int y) {
@@ -17,6 +19,10 @@ bool collides(const Board& b, PieceType p, Rot r, int x, int y) {
 }
 
 void lockPiece(Board& b, PieceType p, Rot r, int x, int y) {
+    // The contract is that the caller already checked collides(). Violating it
+    // writes out of bounds in b.rows[] below, which corrupts memory rather than
+    // just setting a wrong bit. Free in release; live in tb_tests, which -UNDEBUG.
+    assert(!collides(b, p, r, x, y));
     const Cell* cells = pieceCells(p, r);
     for (int i = 0; i < 4; ++i)
         b.rows[y + cells[i].dy] |= static_cast<uint16_t>(1u << (x + cells[i].dx));
