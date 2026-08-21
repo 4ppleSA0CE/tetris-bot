@@ -25,7 +25,7 @@ set(TB_CORE_SOURCES
 # them by forgetting to repeat two lines.
 add_library(tb_options INTERFACE)
 target_include_directories(tb_options INTERFACE ${CMAKE_CURRENT_SOURCE_DIR})
-target_compile_options(tb_options INTERFACE -Wall -Wextra)
+target_compile_options(tb_options INTERFACE -Wall -Wextra -Wconversion -Wsign-conversion)
 
 add_executable(tetris_bot native/main.cpp ${TB_CORE_SOURCES})
 target_link_libraries(tetris_bot PRIVATE tb_options)
