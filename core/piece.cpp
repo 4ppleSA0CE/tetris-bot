@@ -1,5 +1,7 @@
 #include "core/piece.h"
 
+#include <cassert>
+
 namespace tb {
 namespace {
 
@@ -62,6 +64,11 @@ constexpr Cell CELLS[NUM_PIECES][4][4] = {
 } // namespace
 
 const Cell* pieceCells(PieceType p, Rot r) {
+    // PIECE_NONE is -1 and is a reachable value elsewhere (an empty hold slot),
+    // so an unguarded index here is out-of-bounds UB rather than a caught error.
+    // Compiles to nothing in the release build; live in tb_tests, which -UNDEBUG.
+    assert(p >= 0 && p < NUM_PIECES);
+    assert(r >= 0 && r < 4);
     return CELLS[static_cast<int>(p)][static_cast<int>(r)];
 }
 
