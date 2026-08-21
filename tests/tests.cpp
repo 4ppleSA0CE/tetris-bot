@@ -12,6 +12,7 @@
 #include "core/types.h"
 #include "core/piece.h"
 #include "core/board.h"
+#include "core/srs_tables.h"
 
 static int g_testCount = 0;
 
@@ -348,6 +349,100 @@ static void test_isEmpty() {
     assert(tb::isEmpty(b));
 }
 
+// ---------------------------------------------------------- core/srs_tables.h
+
+static bool kickEq(tb::Kick a, int dx, int dy) { return a.dx == dx && a.dy == dy; }
+
+static void test_kick_tables_first_test_is_identity() {
+    for (int t = 0; t < 8; ++t) {
+        assert(kickEq(tb::KICKS_JLSTZ[t][0], 0, 0));
+        assert(kickEq(tb::KICKS_I[t][0], 0, 0));
+    }
+    for (int t = 0; t < 4; ++t) {
+        assert(kickEq(tb::KICKS_180[t][0], 0, 0));
+        assert(kickEq(tb::KICKS_180_I[t][0], 0, 0));
+    }
+}
+
+// Both kick tables collapse to 4 distinct rows, each appearing twice -- but the
+// two tables pair DIFFERENT transitions, and that difference is the whole point.
+//
+// Verified against https://harddrop.com/wiki/SRS and
+// https://tetris.wiki/Super_Rotation_System. Kicks are derived as
+// kick(A->B) = offsetA - offsetB from per-state offset vectors.
+//
+//   JLSTZ: states 0 and 2 have identical ALL-ZERO offsets, so any transition
+//          into or out of R (or L) is the same regardless of the other end.
+//          Pairs: [0]0->R == [3]2->R, [1]R->0 == [2]R->2,
+//                 [4]2->L == [7]0->L, [5]L->2 == [6]L->0
+//
+//   I:     no offset vector is zero -- the I piece's rotation pivot is not at
+//          its geometric center -- so that collapse does not apply. Instead a
+//          cross-sum symmetry (offset0 + offset2 == offsetR + offsetL) pairs
+//          OPPOSITE transitions.
+//          Pairs: [0]0->R == [5]L->2, [1]R->0 == [4]2->L,
+//                 [2]R->2 == [7]0->L, [3]2->R == [6]L->0
+//
+// Asserting merely "4 distinct rows" would pass against the single most likely
+// transcription bug: copying JLSTZ's pairing onto the I table. So this checks
+// all 28 unordered row pairs and requires an EXACT match to the expected
+// structure -- every listed pair identical, every other pair different.
+static void assertKickDuplicateStructure(const tb::Kick table[][5],
+                                         const int pairs[][2], int nPairs) {
+    bool shouldMatch[8][8] = {};
+    for (int i = 0; i < nPairs; ++i) {
+        shouldMatch[pairs[i][0]][pairs[i][1]] = true;
+        shouldMatch[pairs[i][1]][pairs[i][0]] = true;
+    }
+    for (int a = 0; a < 8; ++a) {
+        for (int b = a + 1; b < 8; ++b) {
+            bool same = true;
+            for (int k = 0; k < 5; ++k)
+                if (!kickEq(table[a][k], table[b][k].dx, table[b][k].dy)) same = false;
+            assert(same == shouldMatch[a][b]);
+        }
+    }
+}
+
+static void test_kick_table_jlstz_duplicate_structure() {
+    static const int pairs[4][2] = {{0, 3}, {1, 2}, {4, 7}, {5, 6}};
+    assertKickDuplicateStructure(tb::KICKS_JLSTZ, pairs, 4);
+}
+
+static void test_kick_table_i_duplicate_structure() {
+    static const int pairs[4][2] = {{0, 5}, {1, 4}, {2, 7}, {3, 6}};
+    assertKickDuplicateStructure(tb::KICKS_I, pairs, 4);
+}
+
+static void test_kick_table_spot_checks() {
+    // 0->R (index 0)
+    assert(kickEq(tb::KICKS_JLSTZ[0][4], -1, -2));
+    // 0->L (index 7) -- the offset the T-spin-triple case turns on
+    assert(kickEq(tb::KICKS_JLSTZ[7][4], 1, -2));
+    // 2->L (index 4)
+    assert(kickEq(tb::KICKS_JLSTZ[4][4], 1, -2));
+    // L->2 (index 5)
+    assert(kickEq(tb::KICKS_JLSTZ[5][4], -1, 2));
+    // I 0->R (index 0): test 3 and test 4, in this order. Swapping them is the
+    // real published-library bug this test exists to catch.
+    assert(kickEq(tb::KICKS_I[0][3], -2, -1));
+    assert(kickEq(tb::KICKS_I[0][4], 1, 2));
+    // I R->2 (index 2): test 4 is (2,-1), NOT (2,1).
+    assert(kickEq(tb::KICKS_I[2][4], 2, -1));
+    // 180: 0->2 lifts one row on its second test.
+    assert(kickEq(tb::KICKS_180[0][1], 0, 1));
+    assert(kickEq(tb::KICKS_180[2][1], 0, -1));
+}
+
+static void test_kick_180_every_offset_is_within_one_column_and_two_rows() {
+    for (int t = 0; t < 4; ++t) {
+        for (int k = 0; k < 6; ++k) {
+            assert(tb::KICKS_180[t][k].dx >= -1 && tb::KICKS_180[t][k].dx <= 1);
+            assert(tb::KICKS_180[t][k].dy >= -1 && tb::KICKS_180[t][k].dy <= 2);
+        }
+    }
+}
+
 int main() {
     RUN(test_types_constants);
     RUN(test_piece_cells_spawn_shapes);
@@ -372,6 +467,11 @@ int main() {
     RUN(test_columnHeight);
     RUN(test_columnHeight_counts_over_a_hole);
     RUN(test_isEmpty);
+    RUN(test_kick_tables_first_test_is_identity);
+    RUN(test_kick_table_jlstz_duplicate_structure);
+    RUN(test_kick_table_i_duplicate_structure);
+    RUN(test_kick_table_spot_checks);
+    RUN(test_kick_180_every_offset_is_within_one_column_and_two_rows);
     std::printf("all %d tests passed\n", g_testCount);
     return 0;
 }
