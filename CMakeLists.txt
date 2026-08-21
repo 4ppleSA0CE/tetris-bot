@@ -15,16 +15,22 @@ endif()
 set(TB_CORE_SOURCES
 )
 
+# Shared include dir and warning flags. Every target links this, so a new target
+# (notably the if(EMSCRIPTEN) one the wasm milestone adds) cannot silently miss
+# them by forgetting to repeat two lines.
+add_library(tb_options INTERFACE)
+target_include_directories(tb_options INTERFACE ${CMAKE_CURRENT_SOURCE_DIR})
+target_compile_options(tb_options INTERFACE -Wall -Wextra)
+
 add_executable(tetris_bot native/main.cpp ${TB_CORE_SOURCES})
-target_include_directories(tetris_bot PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
-target_compile_options(tetris_bot PRIVATE -Wall -Wextra)
+target_link_libraries(tetris_bot PRIVATE tb_options)
 
 add_executable(tb_tests tests/tests.cpp ${TB_CORE_SOURCES})
-target_include_directories(tb_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(tb_tests PRIVATE tb_options)
 # RelWithDebInfo puts -DNDEBUG in CMAKE_CXX_FLAGS_RELWITHDEBINFO, which compiles
 # every assert() to nothing. target_compile_options lands AFTER those flags on
 # the command line, so -UNDEBUG wins and the assertions stay live.
-target_compile_options(tb_tests PRIVATE -Wall -Wextra -UNDEBUG)
+target_compile_options(tb_tests PRIVATE -UNDEBUG)
 
 enable_testing()
 add_test(NAME tb_tests COMMAND tb_tests)
