@@ -210,6 +210,80 @@ static void test_collides_existing_stack() {
     assert(!tb::collides(b, tb::PIECE_O, tb::ROT_0, 4, 2));  // clear above everything
 }
 
+// ------------------------------------------------- core/board.h: lock + clear
+
+static int popcount16(uint16_t v) {
+    int n = 0;
+    for (int i = 0; i < 16; ++i) n += (v >> i) & 1;
+    return n;
+}
+
+static void test_lockPiece_sets_exactly_four_bits() {
+    tb::Board b{};
+    tb::lockPiece(b, tb::PIECE_T, tb::ROT_0, 3, 0);
+    // T ROT_0 cells are (1,2)(0,1)(1,1)(2,1) -> (4,2) and (3,1)(4,1)(5,1).
+    assert(b.rows[2] == 0x010);
+    assert(b.rows[1] == 0x038);
+    assert(b.rows[0] == 0x000);
+    int total = 0;
+    for (int y = 0; y < tb::BOARD_H; ++y) total += popcount16(b.rows[y]);
+    assert(total == 4);
+}
+
+static void test_clearLines_removes_none_when_no_row_is_full() {
+    const char* rows[] = {
+        "#########.",
+        ".#########",
+    };
+    tb::Board b = tb::boardFromAscii(rows, 2);
+    assert(tb::clearLines(b) == 0);
+    assert(b.rows[0] == 0x3FE);
+    assert(b.rows[1] == 0x1FF);
+}
+
+static void test_clearLines_single_row_shifts_above_down_by_one() {
+    const char* rows[] = {
+        "#.........",   // y = 2
+        "##########",   // y = 1  <- full, removed
+        "..#.......",   // y = 0
+    };
+    tb::Board b = tb::boardFromAscii(rows, 3);
+    assert(tb::clearLines(b) == 1);
+    assert(b.rows[0] == 0x004);   // "..#......." untouched, still the bottom row
+    assert(b.rows[1] == 0x001);   // "#........." fell from y = 2 to y = 1
+    assert(b.rows[2] == 0x000);   // vacated and zeroed
+    assert(b.rows[tb::BOARD_H - 1] == 0x000);
+}
+
+static void test_clearLines_two_non_adjacent_rows() {
+    const char* rows[] = {
+        ".....#....",   // y = 4
+        "##########",   // y = 3  <- full, removed
+        "....#.....",   // y = 2
+        "##########",   // y = 1  <- full, removed
+        "#.........",   // y = 0
+    };
+    tb::Board b = tb::boardFromAscii(rows, 5);
+    assert(tb::clearLines(b) == 2);
+    assert(b.rows[0] == 0x001);   // "#........."  fell 0
+    assert(b.rows[1] == 0x010);   // "....#....."  fell 1
+    assert(b.rows[2] == 0x020);   // ".....#...."  fell 2
+    assert(b.rows[3] == 0x000);
+    assert(b.rows[4] == 0x000);
+}
+
+static void test_clearLines_four_rows_is_a_tetris() {
+    const char* rows[] = {
+        "##########",
+        "##########",
+        "##########",
+        "##########",
+    };
+    tb::Board b = tb::boardFromAscii(rows, 4);
+    assert(tb::clearLines(b) == 4);
+    for (int y = 0; y < tb::BOARD_H; ++y) assert(b.rows[y] == 0);
+}
+
 int main() {
     RUN(test_types_constants);
     RUN(test_piece_cells_spawn_shapes);
@@ -223,6 +297,11 @@ int main() {
     RUN(test_collides_right_wall);
     RUN(test_collides_floor_and_ceiling);
     RUN(test_collides_existing_stack);
+    RUN(test_lockPiece_sets_exactly_four_bits);
+    RUN(test_clearLines_removes_none_when_no_row_is_full);
+    RUN(test_clearLines_single_row_shifts_above_down_by_one);
+    RUN(test_clearLines_two_non_adjacent_rows);
+    RUN(test_clearLines_four_rows_is_a_tetris);
     std::printf("all %d tests passed\n", g_testCount);
     return 0;
 }

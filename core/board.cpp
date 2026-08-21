@@ -16,6 +16,26 @@ bool collides(const Board& b, PieceType p, Rot r, int x, int y) {
     return false;
 }
 
+void lockPiece(Board& b, PieceType p, Rot r, int x, int y) {
+    const Cell* cells = pieceCells(p, r);
+    for (int i = 0; i < 4; ++i)
+        b.rows[y + cells[i].dy] |= static_cast<uint16_t>(1u << (x + cells[i].dx));
+}
+
+int clearLines(Board& b) {
+    // Compact surviving rows toward the bottom, then zero the vacated top rows.
+    // This is naive gravity: a row falls by exactly the number of cleared rows
+    // below it, and floating blocks are allowed to stay floating.
+    int write = 0;
+    for (int read = 0; read < BOARD_H; ++read) {
+        if (b.rows[read] == FULL_ROW) continue;
+        b.rows[write++] = b.rows[read];
+    }
+    const int removed = BOARD_H - write;
+    for (int y = write; y < BOARD_H; ++y) b.rows[y] = 0;
+    return removed;
+}
+
 Board boardFromAscii(const char* const* rows, int nRows) {
     Board b{};
     for (int i = 0; i < nRows; ++i) {
