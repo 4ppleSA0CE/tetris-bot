@@ -10,6 +10,7 @@
 #include <cstdio>
 
 #include "core/types.h"
+#include "core/piece.h"
 
 static int g_testCount = 0;
 
@@ -45,8 +46,110 @@ static void test_types_constants() {
     for (int y = 0; y < tb::BOARD_H; ++y) assert(b.rows[y] == 0);
 }
 
+// ---------------------------------------------------------------- core/piece.h
+
+static bool hasCell(const tb::Cell* cells, int dx, int dy) {
+    for (int i = 0; i < 4; ++i)
+        if (cells[i].dx == dx && cells[i].dy == dy) return true;
+    return false;
+}
+
+// Bounding-box size for each piece: 4x4 for I, 2x2 for O, 3x3 for the rest.
+static int boxSize(tb::PieceType p) {
+    if (p == tb::PIECE_I) return 4;
+    if (p == tb::PIECE_O) return 2;
+    return 3;
+}
+
+static void test_piece_cells_spawn_shapes() {
+    // Spawn (ROT_0) shapes, box coordinates, origin = box lower-left, dy up.
+    const tb::Cell* i0 = tb::pieceCells(tb::PIECE_I, tb::ROT_0);
+    assert(hasCell(i0, 0, 2) && hasCell(i0, 1, 2) && hasCell(i0, 2, 2) && hasCell(i0, 3, 2));
+
+    const tb::Cell* j0 = tb::pieceCells(tb::PIECE_J, tb::ROT_0);
+    assert(hasCell(j0, 0, 2) && hasCell(j0, 0, 1) && hasCell(j0, 1, 1) && hasCell(j0, 2, 1));
+
+    const tb::Cell* l0 = tb::pieceCells(tb::PIECE_L, tb::ROT_0);
+    assert(hasCell(l0, 2, 2) && hasCell(l0, 0, 1) && hasCell(l0, 1, 1) && hasCell(l0, 2, 1));
+
+    const tb::Cell* o0 = tb::pieceCells(tb::PIECE_O, tb::ROT_0);
+    assert(hasCell(o0, 0, 0) && hasCell(o0, 1, 0) && hasCell(o0, 0, 1) && hasCell(o0, 1, 1));
+
+    const tb::Cell* s0 = tb::pieceCells(tb::PIECE_S, tb::ROT_0);
+    assert(hasCell(s0, 1, 2) && hasCell(s0, 2, 2) && hasCell(s0, 0, 1) && hasCell(s0, 1, 1));
+
+    const tb::Cell* t0 = tb::pieceCells(tb::PIECE_T, tb::ROT_0);
+    assert(hasCell(t0, 1, 2) && hasCell(t0, 0, 1) && hasCell(t0, 1, 1) && hasCell(t0, 2, 1));
+
+    const tb::Cell* z0 = tb::pieceCells(tb::PIECE_Z, tb::ROT_0);
+    assert(hasCell(z0, 0, 2) && hasCell(z0, 1, 2) && hasCell(z0, 1, 1) && hasCell(z0, 2, 1));
+}
+
+static void test_piece_cells_vertical_shapes() {
+    // The four states the kick research names explicitly, other than spawn.
+    const tb::Cell* iR = tb::pieceCells(tb::PIECE_I, tb::ROT_R);
+    assert(hasCell(iR, 2, 3) && hasCell(iR, 2, 2) && hasCell(iR, 2, 1) && hasCell(iR, 2, 0));
+
+    const tb::Cell* tR = tb::pieceCells(tb::PIECE_T, tb::ROT_R);
+    assert(hasCell(tR, 1, 2) && hasCell(tR, 1, 1) && hasCell(tR, 2, 1) && hasCell(tR, 1, 0));
+
+    const tb::Cell* t2 = tb::pieceCells(tb::PIECE_T, tb::ROT_2);
+    assert(hasCell(t2, 0, 1) && hasCell(t2, 1, 1) && hasCell(t2, 2, 1) && hasCell(t2, 1, 0));
+
+    const tb::Cell* tL = tb::pieceCells(tb::PIECE_T, tb::ROT_L);
+    assert(hasCell(tL, 1, 2) && hasCell(tL, 0, 1) && hasCell(tL, 1, 1) && hasCell(tL, 1, 0));
+}
+
+static void test_piece_cells_rotation_is_cw_in_box() {
+    // A clockwise quarter-turn inside an n x n box maps (cx, cy) -> (cy, n-1-cx).
+    // Applying it to state r must reproduce the cell set of state r+1, for every
+    // piece and every state. This catches a single mistyped offset anywhere.
+    for (int pi = 0; pi < tb::NUM_PIECES; ++pi) {
+        const tb::PieceType p = static_cast<tb::PieceType>(pi);
+        const int n = boxSize(p);
+        for (int r = 0; r < 4; ++r) {
+            const tb::Cell* from = tb::pieceCells(p, static_cast<tb::Rot>(r));
+            const tb::Cell* to = tb::pieceCells(p, static_cast<tb::Rot>((r + 1) % 4));
+            for (int i = 0; i < 4; ++i) {
+                const int rx = from[i].dy;
+                const int ry = (n - 1) - from[i].dx;
+                assert(hasCell(to, rx, ry));
+            }
+        }
+    }
+}
+
+static void test_piece_cells_fit_box_and_are_distinct() {
+    for (int pi = 0; pi < tb::NUM_PIECES; ++pi) {
+        const tb::PieceType p = static_cast<tb::PieceType>(pi);
+        const int n = boxSize(p);
+        for (int r = 0; r < 4; ++r) {
+            const tb::Cell* c = tb::pieceCells(p, static_cast<tb::Rot>(r));
+            for (int i = 0; i < 4; ++i) {
+                assert(c[i].dx >= 0 && c[i].dx < n);
+                assert(c[i].dy >= 0 && c[i].dy < n);
+                for (int k = i + 1; k < 4; ++k)
+                    assert(!(c[i].dx == c[k].dx && c[i].dy == c[k].dy));
+            }
+        }
+    }
+}
+
+static void test_piece_cells_o_never_changes() {
+    const tb::Cell* base = tb::pieceCells(tb::PIECE_O, tb::ROT_0);
+    for (int r = 1; r < 4; ++r) {
+        const tb::Cell* c = tb::pieceCells(tb::PIECE_O, static_cast<tb::Rot>(r));
+        for (int i = 0; i < 4; ++i) assert(hasCell(base, c[i].dx, c[i].dy));
+    }
+}
+
 int main() {
     RUN(test_types_constants);
+    RUN(test_piece_cells_spawn_shapes);
+    RUN(test_piece_cells_vertical_shapes);
+    RUN(test_piece_cells_rotation_is_cw_in_box);
+    RUN(test_piece_cells_fit_box_and_are_distinct);
+    RUN(test_piece_cells_o_never_changes);
     std::printf("all %d tests passed\n", g_testCount);
     return 0;
 }

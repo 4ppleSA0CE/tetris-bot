@@ -13,6 +13,7 @@ endif()
 # this list as they add sources. The wasm milestone adds an if(EMSCRIPTEN)
 # branch that reuses TB_CORE_SOURCES verbatim, so nothing here gets restructured.
 set(TB_CORE_SOURCES
+    core/piece.cpp
 )
 
 # Shared include dir and warning flags. Every target links this, so a new target
