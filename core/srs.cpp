@@ -1,5 +1,7 @@
 #include "core/srs.h"
 
+#include <cassert>
+
 #include "core/board.h"
 #include "core/srs_tables.h"
 
@@ -34,6 +36,12 @@ bool tryRotate(const Board& b, PieceType p, Rot from, Rot to,
         *outKickIndex = 0;
         return true;
     }
+
+    // `p` and `to` are validated downstream by collides() -> pieceCells(), but
+    // `from` is only ever used as an array index -- here, and by KICKS_180[from]
+    // for 180s -- so nothing else would catch it being out of range.
+    assert(from >= 0 && from < 4);
+    assert(to >= 0 && to < 4);
 
     const int idx = TRANSITION_INDEX[static_cast<int>(from)][static_cast<int>(to)];
     if (idx < 0) return false;   // 180 transitions are added in Task 8
