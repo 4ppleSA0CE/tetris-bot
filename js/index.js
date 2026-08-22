@@ -5,6 +5,13 @@ const DEFAULT_SEED = 0;
 const DEFAULT_PPS = 5;
 const DEFAULT_DEPTH = 5;
 const DEFAULT_WIDTH = 100;
+/**
+ * Ticks used to settle a reduced-motion board. Each carries a full second of
+ * simulated time, so at the default 5 PPS this places roughly 40 pieces before
+ * the bot goes permanently static.
+ */
+const REDUCED_MOTION_TICKS = 8;
+const REDUCED_MOTION_STEP_MS = 1000;
 let loading = null;
 /**
  * Instantiate the wasm module once per page. Memoized: a second instantiation
@@ -39,6 +46,24 @@ function clampPPS(pps) {
         return DEFAULT_PPS;
     return Math.min(20, Math.max(1, pps));
 }
+/**
+ * PRD section 6: prefers-reduced-motion -> render a single static board.
+ * Safe to call in Node and in a Worker; returns false where matchMedia is absent.
+ */
+export function prefersReducedMotion() {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function')
+        return false;
+    return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+}
+/**
+ * PRD section 6: "viewport below mobile breakpoint -> caller decides; wrapper
+ * exposes the check." This is that check. The wrapper takes no action on it.
+ */
+export function isViewportBelow(minWidthPx) {
+    if (typeof window === 'undefined')
+        return false;
+    return window.innerWidth < minWidthPx;
+}
 export async function createTetrisBot(config = {}) {
     const { mod, layout, structSize, weightIndex } = await loadBotModule();
     const handle = mod.botCreate(config.seed ?? DEFAULT_SEED, clampPPS(config.pps ?? DEFAULT_PPS), config.searchDepth ?? DEFAULT_DEPTH, config.beamWidth ?? DEFAULT_WIDTH);
@@ -53,10 +78,17 @@ export async function createTetrisBot(config = {}) {
         }
     }
     const view = new SnapshotView(mod, mod.botSnapshotPtr(handle), layout, structSize);
+    const reducedMotion = prefersReducedMotion();
+    if (reducedMotion) {
+        // One static board, settled up front, then no motion ever.
+        for (let i = 1; i <= REDUCED_MOTION_TICKS; i++) {
+            mod.botTick(handle, i * REDUCED_MOTION_STEP_MS);
+        }
+    }
     let destroyed = false;
     const bot = {
         tick(nowMs) {
-            if (destroyed)
+            if (destroyed || reducedMotion)
                 return;
             mod.botTick(handle, nowMs);
         },

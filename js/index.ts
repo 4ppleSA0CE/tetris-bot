@@ -40,6 +40,14 @@ const DEFAULT_PPS = 5;
 const DEFAULT_DEPTH = 5;
 const DEFAULT_WIDTH = 100;
 
+/**
+ * Ticks used to settle a reduced-motion board. Each carries a full second of
+ * simulated time, so at the default 5 PPS this places roughly 40 pieces before
+ * the bot goes permanently static.
+ */
+const REDUCED_MOTION_TICKS = 8;
+const REDUCED_MOTION_STEP_MS = 1000;
+
 let loading: Promise<LoadedModule> | null = null;
 
 /**
@@ -82,6 +90,24 @@ function clampPPS(pps: number): number {
   return Math.min(20, Math.max(1, pps));
 }
 
+/**
+ * PRD section 6: prefers-reduced-motion -> render a single static board.
+ * Safe to call in Node and in a Worker; returns false where matchMedia is absent.
+ */
+export function prefersReducedMotion(): boolean {
+  if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return false;
+  return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+}
+
+/**
+ * PRD section 6: "viewport below mobile breakpoint -> caller decides; wrapper
+ * exposes the check." This is that check. The wrapper takes no action on it.
+ */
+export function isViewportBelow(minWidthPx: number): boolean {
+  if (typeof window === 'undefined') return false;
+  return window.innerWidth < minWidthPx;
+}
+
 export async function createTetrisBot(config: BotConfig = {}): Promise<TetrisBot> {
   const { mod, layout, structSize, weightIndex } = await loadBotModule();
 
@@ -104,11 +130,20 @@ export async function createTetrisBot(config: BotConfig = {}): Promise<TetrisBot
   }
 
   const view = new SnapshotView(mod, mod.botSnapshotPtr(handle), layout, structSize);
+
+  const reducedMotion = prefersReducedMotion();
+  if (reducedMotion) {
+    // One static board, settled up front, then no motion ever.
+    for (let i = 1; i <= REDUCED_MOTION_TICKS; i++) {
+      mod.botTick(handle, i * REDUCED_MOTION_STEP_MS);
+    }
+  }
+
   let destroyed = false;
 
   const bot: TetrisBot = {
     tick(nowMs: number): void {
-      if (destroyed) return;
+      if (destroyed || reducedMotion) return;
       mod.botTick(handle, nowMs);
     },
     snapshot(): Snapshot {

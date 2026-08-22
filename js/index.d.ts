@@ -41,4 +41,14 @@ export interface LoadedModule {
  * and nothing here may become load-bearing for an embed.
  */
 export declare function loadBotModule(): Promise<LoadedModule>;
+/**
+ * PRD section 6: prefers-reduced-motion -> render a single static board.
+ * Safe to call in Node and in a Worker; returns false where matchMedia is absent.
+ */
+export declare function prefersReducedMotion(): boolean;
+/**
+ * PRD section 6: "viewport below mobile breakpoint -> caller decides; wrapper
+ * exposes the check." This is that check. The wrapper takes no action on it.
+ */
+export declare function isViewportBelow(minWidthPx: number): boolean;
 export declare function createTetrisBot(config?: BotConfig): Promise<TetrisBot>;
