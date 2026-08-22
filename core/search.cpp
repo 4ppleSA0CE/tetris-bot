@@ -51,6 +51,16 @@ inline double elapsedMs(std::chrono::steady_clock::time_point t0) {
                std::chrono::steady_clock::now() - t0).count();
 }
 
+// A placement is a lock-out if, after line clears, anything is still sitting at or above the
+// top of the visible field. It stays in the beam so a doomed board still yields a legal move,
+// but it loses to every placement that keeps the stack inside the well.
+constexpr float TOPOUT_PENALTY = -1.0e6f;
+
+inline bool aboveField(const Board& b) {
+    for (int y = VISIBLE_H; y < BOARD_H; ++y) if (b.rows[y] != 0) return true;
+    return false;
+}
+
 } // namespace
 
 SearchResult search(const Board& b, PieceType current, PieceType hold,
@@ -166,8 +176,9 @@ SearchResult search(const Board& b, PieceType current, PieceType hold,
                                           : (uint8_t)0;
                     child.attackScore = parent.attackScore
                                       + cfg.weights.attackDealt * (float)atk * discount;
-                    child.score       = child.attackScore
-                                      + evaluate(child.board, cfg.weights, child.b2b);
+                    float terminal = evaluate(child.board, cfg.weights, child.b2b);
+                    if (aboveField(child.board)) terminal += TOPOUT_PENALTY;
+                    child.score = child.attackScore + terminal;
 
                     if (d == 0) {
                         if (rootCount >= (int)(sizeof(S.roots) / sizeof(S.roots[0]))) continue;

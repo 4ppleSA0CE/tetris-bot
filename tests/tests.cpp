@@ -2089,6 +2089,43 @@ static void test_search_prefers_hold_when_better() {
     assert(tb::clearLines(after2) == 4);
 }
 
+static void test_search_topout_semantics() {
+    tb::SearchConfig cfg;
+    cfg.timeBudgetMs = 1e9f;   // deterministic
+    tb::PieceType queueO[tb::PREVIEW_LEN] = {
+        tb::PIECE_O, tb::PIECE_O, tb::PIECE_O, tb::PIECE_O, tb::PIECE_O
+    };
+
+    // (1) A completely full board: the piece cannot spawn, so there is genuinely no legal
+    //     placement and valid must be false.
+    tb::Board full{};
+    for (int y = 0; y < 26; ++y) full.rows[y] = tb::FULL_ROW;
+    tb::SearchResult rFull = tb::search(full, tb::PIECE_T, tb::PIECE_NONE, queueO,
+                                        tb::PREVIEW_LEN, false, 0, cfg);
+    assert(!rFull.valid);
+
+    // (2) Columns 0..7 filled to height 20, columns 8 and 9 open to the floor.
+    //     Exactly one O placement stays inside the visible field: the one in the 2-wide well.
+    //     Every other O rests on top of the stack and puts cells at rows 20 and 21.
+    //     All weights are zeroed so the ONLY thing that can steer the choice is the
+    //     above-field penalty.
+    tb::Board b{};
+    for (int y = 0; y < 20; ++y) b.rows[y] = (uint16_t)0x0FF;   // columns 0..7
+    tb::SearchConfig zero;
+    zero.timeBudgetMs = 1e9f;
+    zero.depth = 1;
+    zero.weights = tb::Weights{};   // every weight, including attackDealt, is 0
+
+    tb::SearchResult r = tb::search(b, tb::PIECE_O, tb::PIECE_NONE, queueO,
+                                    tb::PREVIEW_LEN, false, 0, zero);
+    assert(r.valid);   // an awful board is not a topped-out board
+    tb::Board after = b;
+    tb::lockPiece(after, tb::PIECE_O, r.placement.rot, r.placement.x, r.placement.y);
+    int maxRow = -1;
+    for (int y = tb::BOARD_H - 1; y >= 0; --y) { if (after.rows[y] != 0) { maxRow = y; break; } }
+    assert(maxRow < tb::VISIBLE_H);
+}
+
 int main() {
     RUN(test_types_constants);
     RUN(test_piece_cells_spawn_shapes);
@@ -2187,6 +2224,7 @@ int main() {
     RUN(test_search_is_anytime);
     RUN(test_search_uses_full_depth);
     RUN(test_search_prefers_hold_when_better);
+    RUN(test_search_topout_semantics);
     std::printf("all %d tests passed\n", g_testCount);
     return 0;
 }
