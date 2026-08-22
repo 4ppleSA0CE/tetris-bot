@@ -7,6 +7,7 @@
 
 #include <cassert>
 #include <cstdint>
+#include <cstddef>
 #include <cstdio>
 
 #include "core/types.h"
@@ -20,6 +21,7 @@
 #include "core/eval.h"
 #include "core/search.h"
 #include "core/game.h"
+#include "bindings/snapshot.h"
 #include <cmath>
 #include <chrono>
 
@@ -2347,6 +2349,44 @@ static void test_thousand_piece_run() {
                 g.linesCleared(), g.attackSent(), g.tSpinCount(), (unsigned)g.maxB2b());
 }
 
+// ---------------------------------------------------------------------------
+// bindings/snapshot.h layout. These are the golden numbers the TypeScript side
+// learns at runtime via getSnapshotLayout(). If this test fails, JS is reading
+// garbage and nothing will look obviously broken (PRD section 12).
+// ---------------------------------------------------------------------------
+static void test_snapshot_layout() {
+    using tb::Snapshot;
+    using tb::Event;
+    assert(sizeof(Event) == 4);
+    assert(alignof(Event) == 2);
+    assert(offsetof(Event, type)  == 0);
+    assert(offsetof(Event, param) == 1);
+    assert(offsetof(Event, frame) == 2);
+
+    assert(sizeof(Snapshot)  == 156);
+    assert(alignof(Snapshot) == 4);
+    assert(offsetof(Snapshot, frame)        ==   0);
+    assert(offsetof(Snapshot, rows)         ==   4);
+    assert(offsetof(Snapshot, activePiece)  ==  84);
+    assert(offsetof(Snapshot, activeRot)    ==  85);
+    assert(offsetof(Snapshot, activeX)      ==  86);
+    assert(offsetof(Snapshot, activeY)      ==  87);
+    assert(offsetof(Snapshot, ghostY)       ==  88);
+    assert(offsetof(Snapshot, pendingSpin)  ==  89);
+    assert(offsetof(Snapshot, pathProgress) ==  90);
+    assert(offsetof(Snapshot, holdPiece)    ==  91);
+    assert(offsetof(Snapshot, queue)        ==  92);
+    assert(offsetof(Snapshot, eventCount)   ==  97);
+    assert(offsetof(Snapshot, events)       ==  98);
+    assert(offsetof(Snapshot, piecesPlaced) == 132);
+    assert(offsetof(Snapshot, linesCleared) == 136);
+    assert(offsetof(Snapshot, attackSent)   == 140);
+    assert(offsetof(Snapshot, b2bCount)     == 144);
+    assert(offsetof(Snapshot, comboCount)   == 146);
+    assert(offsetof(Snapshot, pps)          == 148);
+    assert(offsetof(Snapshot, state)        == 152);
+}
+
 int main() {
     RUN(test_types_constants);
     RUN(test_piece_cells_spawn_shapes);
@@ -2451,6 +2491,7 @@ int main() {
     RUN(test_game_b2b_survives_non_clearing_pieces);
     RUN(test_game_determinism);
     RUN(test_thousand_piece_run);
+    RUN(test_snapshot_layout);
     std::printf("all %d tests passed\n", g_testCount);
     return 0;
 }
