@@ -1,0 +1,72 @@
+/* ---------------------------------------------------------------------------
+   OPEN ITEM, PRD section 13: "Exact accent color - deferred until the site
+   palette is settled."
+
+   THIS DECLARATION IS THE ONE PLACE THE ACCENT IS DEFINED. Change it here and
+   nowhere else; the renderer only ever reads --bot-accent, and --bot-accent
+   only ever reads this.
+   --------------------------------------------------------------------------- */
+:root {
+  --bot-accent-placeholder: oklch(0.79 0.17 84);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--bot-bg, oklch(0.16 0 0));
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+#stage {
+  /* PRD section 7.1 - the eight properties the renderer reads. */
+  --bot-bg: oklch(0.16 0 0);
+  --bot-grid: oklch(0.31 0 0);
+  --bot-cell: oklch(0.71 0 0);
+  --bot-cell-active: oklch(0.94 0 0);
+  --bot-cell-ghost: oklch(0.38 0 0);
+  --bot-text: oklch(0.9 0 0);
+  --bot-text-dim: oklch(0.58 0 0);
+  --bot-accent: var(--bot-accent-placeholder);
+
+  color: var(--bot-text);
+  background: var(--bot-bg);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  height: 100%;
+  padding: 24px 0 32px;
+}
+
+#well {
+  flex: 1 1 auto;
+  width: min(560px, 92vw);
+  min-height: 0;
+  display: block;
+}
+
+#rate {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: var(--bot-text-dim);
+  font-size: 12px;
+  letter-spacing: 0.08em;
+}
+
+#rate-label {
+  min-width: 7ch;
+}
+
+#pps {
+  width: min(320px, 60vw);
+  accent-color: var(--bot-text-dim);
+}
