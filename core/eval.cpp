@@ -23,6 +23,12 @@ Features extractFeatures(const Board& b) {
 
     for (int c = 0; c < BOARD_W; ++c) if (h[c] > f.maxHeight) f.maxHeight = h[c];
 
+    for (int c = 0; c < BOARD_W; ++c) {
+        for (int y = 0; y < h[c] - 1; ++y) {
+            if (!occ(b, c, y)) ++f.holes;
+        }
+    }
+
     return f;
 }
 

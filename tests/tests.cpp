@@ -1758,6 +1758,25 @@ static void test_eval_heights() {
     assert(tb::columnHeight(a, 9) == 0);
 }
 
+static tb::Board fixB() {
+    const char* rows[] = {
+        "..........",
+        "####......",
+        "#.##......",
+        "####......",
+        "#.#.......",
+    };
+    return tb::boardFromAscii(rows, 5);
+}
+
+static void test_eval_holes() {
+    tb::Features f = tb::extractFeatures(fixB());
+    // column 1 is empty at y=0 and y=2 under a height of 4 -> 2 holes
+    // column 3 is empty at y=0 under a height of 4          -> 1 hole
+    assert(f.holes == 3);
+    assert(tb::extractFeatures(fixA()).holes == 0);
+}
+
 int main() {
     RUN(test_types_constants);
     RUN(test_piece_cells_spawn_shapes);
@@ -1842,6 +1861,7 @@ int main() {
     RUN(test_mg_placement_fields_are_consistent);
     RUN(test_eval_ascii_convention);
     RUN(test_eval_heights);
+    RUN(test_eval_holes);
     std::printf("all %d tests passed\n", g_testCount);
     return 0;
 }
