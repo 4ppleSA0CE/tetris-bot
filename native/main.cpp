@@ -6,6 +6,7 @@
 // placements, no search, no evaluation, no spin classification. The search
 // milestone adds --depth and --width.
 
+#include <chrono>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
@@ -50,6 +51,7 @@ void usage() {
                  "       tetris_bot --movegen [FIXTURE|all]\n"
                  "  --random   play uniformly random hard-drop placements\n"
                  "  --movegen  inspect generated T placements for a fixture\n"
+                 "  --movegen-bench [N]  time generateMoves throughput\n"
                  "  --print    dump the visible board after every piece\n"
                  "  --stats    print totals at the end\n");
 }
@@ -239,6 +241,52 @@ int runMovegenMode(const char* which) {
     return all ? 0 : 1;
 }
 
+// --movegen-bench : how many generateMoves calls per second, on a board with
+// realistic clutter. PRD 4.5 needs roughly 200,000/sec for a depth-5,
+// width-100 beam with hold branching to fit inside 5 ms.
+int runMovegenBench(int iters) {
+    const tb::Board b = tb::boardFromAscii(MG_FIX_MID, 10);
+    static tb::MoveList ml;
+    unsigned long long sink = 0;
+
+    std::printf("movegen-bench: board=mid iters=%d\n", iters);
+
+    // Warm the branch predictors and the static arena before timing anything.
+    for (int i = 0; i < 1000; ++i) {
+        tb::generateMoves(b, tb::PIECE_T, &ml);
+        sink += static_cast<unsigned>(ml.count);
+    }
+
+    double totalSeconds = 0.0;
+    long long totalCalls = 0;
+    for (int pi = 0; pi < tb::NUM_PIECES; ++pi) {
+        const tb::PieceType p = static_cast<tb::PieceType>(pi);
+        tb::generateMoves(b, p, &ml);
+        const int placements = ml.count;
+
+        const auto t0 = std::chrono::steady_clock::now();
+        for (int i = 0; i < iters; ++i) {
+            tb::generateMoves(b, p, &ml);
+            sink += static_cast<unsigned>(ml.count);   // keep the call alive
+        }
+        const auto t1 = std::chrono::steady_clock::now();
+
+        const double secs = std::chrono::duration<double>(t1 - t0).count();
+        totalSeconds += secs;
+        totalCalls += iters;
+        std::printf("  piece=%d placements=%d us_per_call=%.2f calls_per_sec=%.0f\n",
+                    pi, placements, (secs * 1e6) / iters, iters / secs);
+    }
+
+    std::printf("  TOTAL us_per_call=%.2f calls_per_sec=%.0f\n",
+                (totalSeconds * 1e6) / static_cast<double>(totalCalls),
+                static_cast<double>(totalCalls) / totalSeconds);
+    std::printf("  (sink=%llu -- ignore, it exists so the calls are not "
+                "optimised away)\n", sink);
+    std::printf("  PRD 4.5 wants about 200000 calls_per_sec for depth 5 / width 100.\n");
+    return 0;
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -246,6 +294,10 @@ int main(int argc, char** argv) {
         if (std::strcmp(argv[i], "--movegen") == 0) {
             const char* which = (i + 1 < argc) ? argv[i + 1] : "all";
             return runMovegenMode(which);
+        }
+        if (std::strcmp(argv[i], "--movegen-bench") == 0) {
+            const int iters = (i + 1 < argc) ? std::atoi(argv[i + 1]) : 0;
+            return runMovegenBench(iters > 0 ? iters : 20000);
         }
     }
 
