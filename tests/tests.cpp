@@ -16,6 +16,7 @@
 #include "core/srs.h"
 #include "core/rng.h"
 #include "core/attack.h"
+#include "core/movegen.h"
 
 static int g_testCount = 0;
 
@@ -969,6 +970,68 @@ static void test_mg_tryRotate_o_always_succeeds() {
     }
 }
 
+// ---------------------------------------------------------------- core/movegen.h
+
+static void test_mg_state_index_roundtrips() {
+    // Every state in the window must map to a distinct index in [0, MG_STATES)
+    // and decode back to itself.
+    static bool seen[tb::MG_STATES];
+    for (int i = 0; i < tb::MG_STATES; ++i) seen[i] = false;
+    int n = 0;
+    for (int y = tb::MG_Y_MIN; y <= tb::MG_Y_MAX; ++y) {
+        for (int x = tb::MG_X_MIN; x <= tb::MG_X_MAX; ++x) {
+            for (int r = 0; r < 4; ++r) {
+                const int idx = tb::mgStateIndex(x, y, static_cast<tb::Rot>(r));
+                assert(idx >= 0 && idx < tb::MG_STATES);
+                assert(!seen[idx]);
+                seen[idx] = true;
+                ++n;
+                int dx = -99, dy = -99;
+                tb::Rot dr = tb::ROT_0;
+                tb::mgDecodeState(idx, &dx, &dy, &dr);
+                assert(dx == x && dy == y && static_cast<int>(dr) == r);
+            }
+        }
+    }
+    assert(n == tb::MG_STATES);
+}
+
+static void test_mg_state_bounds_reject_out_of_window() {
+    assert(tb::mgInStateBounds(0, 0));
+    assert(tb::mgInStateBounds(tb::MG_X_MIN, tb::MG_Y_MIN));
+    assert(tb::mgInStateBounds(tb::MG_X_MAX, tb::MG_Y_MAX));
+    assert(!tb::mgInStateBounds(tb::MG_X_MIN - 1, 0));
+    assert(!tb::mgInStateBounds(tb::MG_X_MAX + 1, 0));
+    assert(!tb::mgInStateBounds(0, tb::MG_Y_MIN - 1));
+    assert(!tb::mgInStateBounds(0, tb::MG_Y_MAX + 1));
+    assert(!tb::mgInStateBounds(-100, -100));
+    assert(!tb::mgInStateBounds(1000, 1000));
+    // The spawn state must be inside the window, or nothing works at all.
+    assert(tb::mgInStateBounds(tb::SPAWN_X, tb::SPAWN_Y));
+}
+
+static void test_mg_rotation_helpers() {
+    assert(tb::rotCW(tb::ROT_0) == tb::ROT_R);
+    assert(tb::rotCW(tb::ROT_R) == tb::ROT_2);
+    assert(tb::rotCW(tb::ROT_2) == tb::ROT_L);
+    assert(tb::rotCW(tb::ROT_L) == tb::ROT_0);
+    assert(tb::rotCCW(tb::ROT_0) == tb::ROT_L);
+    assert(tb::rotCCW(tb::ROT_L) == tb::ROT_2);
+    assert(tb::rotCCW(tb::ROT_2) == tb::ROT_R);
+    assert(tb::rotCCW(tb::ROT_R) == tb::ROT_0);
+    assert(tb::rot180(tb::ROT_0) == tb::ROT_2);
+    assert(tb::rot180(tb::ROT_R) == tb::ROT_L);
+    assert(tb::rot180(tb::ROT_2) == tb::ROT_0);
+    assert(tb::rot180(tb::ROT_L) == tb::ROT_R);
+    assert(tb::isRotateAction(tb::ACT_CW));
+    assert(tb::isRotateAction(tb::ACT_CCW));
+    assert(tb::isRotateAction(tb::ACT_180));
+    assert(!tb::isRotateAction(tb::ACT_LEFT));
+    assert(!tb::isRotateAction(tb::ACT_RIGHT));
+    assert(!tb::isRotateAction(tb::ACT_SOFT_DROP));
+    assert(!tb::isRotateAction(tb::ACT_NONE));
+}
+
 int main() {
     RUN(test_types_constants);
     RUN(test_piece_cells_spawn_shapes);
@@ -1028,6 +1091,9 @@ int main() {
     RUN(test_mg_cell_offsets_fit_zero_to_three);
     RUN(test_mg_tryRotate_supports_180);
     RUN(test_mg_tryRotate_o_always_succeeds);
+    RUN(test_mg_state_index_roundtrips);
+    RUN(test_mg_state_bounds_reject_out_of_window);
+    RUN(test_mg_rotation_helpers);
     std::printf("all %d tests passed\n", g_testCount);
     return 0;
 }
