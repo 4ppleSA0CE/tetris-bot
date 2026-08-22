@@ -1,5 +1,13 @@
 #include "bindings/bot_instance.h"
 
+#include <algorithm>
+#include <cassert>
+#include <cstring>
+
+#include "core/board.h"
+#include "core/srs.h"
+#include "core/attack.h"
+
 namespace tb {
 
 // Read a weight by core/eval.h's index. The NAMES and the ORDER are owned by
@@ -22,6 +30,338 @@ float* bindingsWeightSlot(Weights& w, int index) {
         case 10: return &w.attackDealt;
         default: return nullptr;
     }
+}
+
+namespace {
+// SPAWN_X and SPAWN_Y are tb::SPAWN_X / tb::SPAWN_Y from core/movegen.h, which
+// bot_instance.h already includes. DO NOT redeclare them here - an unnamed
+// namespace nested in `tb` is `using`-ed into `tb`, so a local copy makes every
+// unqualified use below ambiguous and the file stops compiling.
+//
+// A single tick can straddle several pieces (a long frame gap, or a high pps).
+// Beyond this many pieces in one tick we resync the clock instead of catching
+// up - the tab was almost certainly backgrounded.
+constexpr int MAX_PIECES_PER_TICK = 64;
+}  // namespace
+
+BotInstance::BotInstance(uint32_t seed, float pps, int searchDepth, int beamWidth)
+    : bag_(seed), seed_(seed), pps_(pps) {
+    cfg_.depth     = searchDepth;
+    cfg_.beamWidth = beamWidth;
+    reset(seed);
+}
+
+void BotInstance::setPPS(float pps) {
+    if (pps < 1.0f) pps = 1.0f;
+    if (pps > 20.0f) pps = 20.0f;
+    pps_ = pps;
+    if (planValid_) recomputeTempo();
+}
+
+// weightName() returns "" for an out-of-range index and setWeightByName()
+// rejects "", so a bad index from JS is a no-op rather than a stray write.
+void BotInstance::setWeight(int index, float value) {
+    setWeightByName(cfg_.weights, weightName(index), value);
+}
+
+void BotInstance::reset(uint32_t seed) {
+    seed_ = seed;
+    bag_.reset(seed);
+    std::memset(&board_, 0, sizeof(board_));
+    std::memset(&snap_, 0, sizeof(snap_));
+    hold_    = PIECE_NONE;
+    current_ = bag_.next();
+    for (int i = 0; i < PREVIEW_LEN; ++i) queue_[i] = bag_.next();
+    b2bActive_ = false;
+    comboCount_ = 0;
+    b2bCount_ = 0;
+    piecesPlaced_ = 0;
+    linesCleared_ = 0;
+    attackSent_ = 0;
+    toppedOut_ = false;
+    planValid_ = false;
+    plannedLines_ = 0;
+    pathSteps_ = 0;
+    started_ = false;
+    pieceStartMs_ = 0.0;
+    lastNowMs_ = 0.0;
+    ppsWindowStartMs_ = 0.0;
+    ppsWindowPieces_ = 0;
+    snap_.holdPiece = PIECE_NONE;
+    snap_.activePiece = PIECE_NONE;
+    snap_.state = 0;
+    writeStats();
+}
+
+void BotInstance::topOut() {
+    if (toppedOut_) return;
+    toppedOut_ = true;
+    planValid_ = false;
+    snap_.state = 2;
+    pushEvent(EV_TOPOUT, 0);
+}
+
+void BotInstance::pushEvent(uint8_t type, uint8_t param) {
+    if (snap_.eventCount >= SNAPSHOT_MAX_EVENTS) return;   // drop, never overwrite
+    Event& e = snap_.events[snap_.eventCount++];
+    e.type  = type;
+    e.param = param;
+    e.frame = static_cast<uint16_t>(snap_.frame & 0xFFFFu);
+}
+
+void BotInstance::buildPathStates() {
+    int x = SPAWN_X;
+    int y = SPAWN_Y;
+    Rot r = ROT_0;
+    pathX_[0] = static_cast<int8_t>(x);
+    pathY_[0] = static_cast<int8_t>(y);
+    pathR_[0] = static_cast<int8_t>(r);
+    pathSteps_ = plan_.pathLen;
+    for (int i = 0; i < plan_.pathLen; ++i) {
+        switch (plan_.path[i]) {
+            case ACT_LEFT:
+                if (!collides(board_, current_, r, x - 1, y)) x -= 1;
+                break;
+            case ACT_RIGHT:
+                if (!collides(board_, current_, r, x + 1, y)) x += 1;
+                break;
+            // ACT_SOFT_DROP moves exactly one row. BFS needs per-row granularity
+            // to reach spin positions, so this is the movegen's semantics too.
+            case ACT_SOFT_DROP:
+                if (!collides(board_, current_, r, x, y - 1)) y -= 1;
+                break;
+            case ACT_CW:
+            case ACT_CCW:
+            case ACT_180: {
+                const Rot to = (plan_.path[i] == ACT_CW)  ? static_cast<Rot>((r + 1) & 3)
+                             : (plan_.path[i] == ACT_CCW) ? static_cast<Rot>((r + 3) & 3)
+                                                          : static_cast<Rot>((r + 2) & 3);
+                int nx = 0, ny = 0; uint8_t ki = 0;
+                if (tryRotate(board_, current_, r, to, x, y, &nx, &ny, &ki)) {
+                    x = nx; y = ny; r = to;
+                }
+                break;
+            }
+            default:
+                break;
+        }
+        pathX_[i + 1] = static_cast<int8_t>(x);
+        pathY_[i + 1] = static_cast<int8_t>(y);
+        pathR_[i + 1] = static_cast<int8_t>(r);
+    }
+    // If this ever trips, ACT_SOFT_DROP in core/movegen.cpp is a drop-to-bottom
+    // rather than a single row; change the ACT_SOFT_DROP case above to
+    //     y = dropY(board_, current_, r, x, y);
+    // and nothing else needs to change.
+    if (x != plan_.x || y != plan_.y || r != plan_.rot) {
+        pathX_[pathSteps_] = plan_.x;
+        pathY_[pathSteps_] = plan_.y;
+        pathR_[pathSteps_] = static_cast<int8_t>(plan_.rot);
+    }
+}
+
+void BotInstance::recomputeTempo() {
+    const double D = 1000.0 / static_cast<double>(pps_);
+    const bool dilate = (plan_.spin != SPIN_NONE) ||
+                        (DILATE_TETRIS && plannedLines_ == 4);
+    headMs_ = (1.0 - TAIL_FRACTION) * D;
+    const double proportionalTail = TAIL_FRACTION * D;
+    tailMs_ = dilate ? std::max(static_cast<double>(DILATION_MS), proportionalTail)
+                     : proportionalTail;
+}
+
+void BotInstance::plan() {
+    if (toppedOut_) return;
+    if (collides(board_, current_, ROT_0, SPAWN_X, SPAWN_Y)) { topOut(); return; }
+
+    const SearchResult r = search(board_, current_, hold_, queue_, PREVIEW_LEN,
+                                  b2bActive_, comboCount_, cfg_);
+    if (!r.valid) { topOut(); return; }
+
+    if (r.useHold) {
+        const PieceType prevHold = hold_;
+        hold_ = current_;
+        if (prevHold == PIECE_NONE) {
+            current_ = queue_[0];
+            for (int i = 0; i < PREVIEW_LEN - 1; ++i) queue_[i] = queue_[i + 1];
+            queue_[PREVIEW_LEN - 1] = bag_.next();
+        } else {
+            current_ = prevHold;
+        }
+    }
+
+    plan_ = r.placement;
+    planValid_ = true;
+    buildPathStates();
+
+    Board tmp = board_;
+    lockPiece(tmp, current_, plan_.rot, plan_.x, plan_.y);
+    plannedLines_ = clearLines(tmp);
+
+    snap_.pendingSpin = static_cast<uint8_t>(plan_.spin);
+    recomputeTempo();
+    writeStats();
+}
+
+void BotInstance::lockCurrent() {
+    lockPiece(board_, current_, plan_.rot, plan_.x, plan_.y);
+    const int lines = clearLines(board_);
+
+    ClearInfo ci{};
+    ci.lines        = static_cast<uint8_t>(lines);
+    ci.spin         = plan_.spin;
+    ci.perfectClear = (lines > 0) && isEmpty(board_);
+    // Mirrors core/game.cpp: a spin flag is only ever set for T, whose bounding box
+    // spans three rows, so {lines:4, spin:*} is physically impossible.
+    assert(!(ci.lines == 4 && ci.spin != SPIN_NONE));
+
+    const bool wasB2B = b2bActive_;
+    attackSent_   += static_cast<uint32_t>(computeAttack(ci, wasB2B, comboCount_));
+    linesCleared_ += static_cast<uint32_t>(lines);
+    piecesPlaced_ += 1;
+
+    // EVENT CONTRACT, and core/game.cpp's Game::stepPiece must match it:
+    //   EV_PIECE_LOCK.param is the PieceType (0..6) that just locked. It is not
+    //     recoverable any other way once current_ advances; the line count is
+    //     already on the clear event.
+    //   EXACTLY ONE of EV_LINE_CLEAR / EV_TETRIS / EV_TSPIN_* fires per
+    //     line-clearing placement - they are mutually exclusive, never stacked.
+    //     The renderer's calloutText() returns null for EV_LINE_CLEAR, so a
+    //     tetris that also emitted EV_LINE_CLEAR would be a silently swallowed
+    //     event, not a visible bug.
+    //   EV_B2B_EXTEND fires from the SECOND difficult clear onward, with
+    //     param == b2bCount. "BACK-TO-BACK x1" is not a back-to-back.
+    pushEvent(EV_PIECE_LOCK, static_cast<uint8_t>(current_));
+    if (lines > 0) {
+        if (plan_.spin == SPIN_MINI) {
+            pushEvent(EV_TSPIN_MINI, static_cast<uint8_t>(lines));
+        } else if (plan_.spin == SPIN_FULL) {
+            pushEvent(lines == 1 ? EV_TSPIN_SINGLE
+                    : lines == 2 ? EV_TSPIN_DOUBLE
+                                 : EV_TSPIN_TRIPLE, static_cast<uint8_t>(lines));
+        } else if (lines == 4) {
+            pushEvent(EV_TETRIS, 4);
+        } else {
+            pushEvent(EV_LINE_CLEAR, static_cast<uint8_t>(lines));
+        }
+
+        if (b2bMaintaining(ci)) {
+            if (wasB2B) {
+                if (b2bCount_ < 0xFFFF) b2bCount_ = static_cast<uint16_t>(b2bCount_ + 1);
+                pushEvent(EV_B2B_EXTEND,
+                          static_cast<uint8_t>(b2bCount_ > 255 ? 255 : b2bCount_));
+            } else {
+                b2bCount_ = 1;
+            }
+            b2bActive_ = true;
+        } else {
+            if (wasB2B) pushEvent(EV_B2B_BREAK, 0);
+            b2bActive_ = false;
+            b2bCount_ = 0;
+        }
+        if (ci.perfectClear) pushEvent(EV_PERFECT_CLEAR, 0);
+        comboCount_ += 1;
+    } else {
+        comboCount_ = 0;
+    }
+
+    current_ = queue_[0];
+    for (int i = 0; i < PREVIEW_LEN - 1; ++i) queue_[i] = queue_[i + 1];
+    queue_[PREVIEW_LEN - 1] = bag_.next();
+
+    planValid_ = false;
+    snap_.pendingSpin = 0;
+
+    ppsWindowPieces_ += 1;
+    const double win = lastNowMs_ - ppsWindowStartMs_;
+    if (win >= 1000.0) {
+        snap_.pps = static_cast<float>(ppsWindowPieces_ * 1000.0 / win);
+        ppsWindowStartMs_ = lastNowMs_;
+        ppsWindowPieces_ = 0;
+    }
+    writeStats();
+
+    // Lock-out, copied verbatim in intent from core/game.cpp's Game::stepPiece.
+    // WITHOUT THIS the browser loop and the CLI loop disagree about when a run is
+    // over: Game ends it the moment anything survives at or above the top of the
+    // visible field, BotInstance would keep playing until the spawn cell itself is
+    // blocked (row 21). PRD section 11 criterion 3 is measured on Game, so the
+    // browser must not be the more permissive of the two.
+    for (int y = VISIBLE_H; y < BOARD_H; ++y) {
+        if (board_.rows[y] != 0) { topOut(); return; }
+    }
+}
+
+void BotInstance::writeActive(double nowMs) {
+    const double elapsed = nowMs - pieceStartMs_;
+    double u;
+    if (elapsed <= headMs_) {
+        u = (headMs_ > 0.0) ? (elapsed / headMs_) * (1.0 - TAIL_FRACTION)
+                            : (1.0 - TAIL_FRACTION);
+    } else {
+        double v = (tailMs_ > 0.0) ? (elapsed - headMs_) / tailMs_ : 1.0;
+        v = std::clamp(v, 0.0, 1.0);
+        const double eased = 1.0 - (1.0 - v) * (1.0 - v) * (1.0 - v);  // easeOutCubic
+        u = (1.0 - TAIL_FRACTION) + eased * TAIL_FRACTION;
+    }
+    u = std::clamp(u, 0.0, 1.0);
+
+    snap_.pathProgress = static_cast<uint8_t>(u * 255.0 + 0.5);
+    int k = static_cast<int>(u * static_cast<double>(pathSteps_));
+    if (k > pathSteps_) k = pathSteps_;
+    if (k < 0) k = 0;
+
+    snap_.activePiece = static_cast<int8_t>(current_);
+    snap_.activeX     = pathX_[k];
+    snap_.activeY     = pathY_[k];
+    snap_.activeRot   = pathR_[k];
+    snap_.ghostY      = static_cast<int8_t>(
+        dropY(board_, current_, static_cast<Rot>(pathR_[k]), pathX_[k], pathY_[k]));
+}
+
+void BotInstance::writeStats() {
+    std::memcpy(snap_.rows, board_.rows, sizeof(snap_.rows));
+    snap_.holdPiece    = static_cast<int8_t>(hold_);
+    for (int i = 0; i < PREVIEW_LEN; ++i) snap_.queue[i] = static_cast<int8_t>(queue_[i]);
+    snap_.piecesPlaced = piecesPlaced_;
+    snap_.linesCleared = linesCleared_;
+    snap_.attackSent   = attackSent_;
+    snap_.b2bCount     = b2bCount_;
+    snap_.comboCount   = static_cast<uint16_t>(comboCount_);
+}
+
+void BotInstance::tick(double nowMs) {
+    snap_.eventCount = 0;          // events are per-tick; the renderer drains every frame
+    snap_.frame += 1;
+    lastNowMs_ = nowMs;
+
+    if (!started_) {
+        started_ = true;
+        pieceStartMs_ = nowMs;
+        ppsWindowStartMs_ = nowMs;
+    }
+    if (toppedOut_) { snap_.state = 2; return; }
+
+    if (!planValid_) {
+        plan();
+        pieceStartMs_ = nowMs;
+        if (toppedOut_) return;
+    }
+
+    int advanced = 0;
+    while (planValid_) {
+        const double total = headMs_ + tailMs_;
+        if (nowMs - pieceStartMs_ < total) break;
+        if (++advanced > MAX_PIECES_PER_TICK) { pieceStartMs_ = nowMs; break; }
+        pieceStartMs_ += total;
+        lockCurrent();
+        if (toppedOut_) return;
+        plan();
+        if (toppedOut_) return;
+    }
+
+    writeActive(nowMs);
+    snap_.state = 1;
 }
 
 } // namespace tb

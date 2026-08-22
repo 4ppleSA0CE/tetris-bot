@@ -2426,6 +2426,73 @@ static void test_weight_table() {
     assert(tb::bindingsWeightSlot(w, 10) == &w.attackDealt);
 }
 
+// ---------------------------------------------------------------------------
+// The renderer animates by walking the replayed path states. If the replay does
+// not land exactly on the placement the search chose, the piece visibly snaps at
+// lock time - the exact "teleport" PRD section 11 forbids.
+// ---------------------------------------------------------------------------
+static void test_bot_instance_path_replay() {
+    tb::BotInstance bot(42, 5.0f, 3, 40);
+    const tb::Snapshot* s = bot.snapshotPtr();
+
+    // 40 seconds of simulated wall clock at 60fps -> ~200 pieces at 5 pps.
+    int distinctStatesThisPiece = 0;
+    uint32_t lastPieces = 0;
+    int minDistinct = 999;
+    int8_t px = 0, py = 0, pr = 0;
+    for (int f = 1; f <= 2400; ++f) {
+        bot.tick(f * 16.6667);
+        if (s->piecesPlaced != lastPieces) {
+            if (lastPieces > 0 && distinctStatesThisPiece < minDistinct)
+                minDistinct = distinctStatesThisPiece;
+            lastPieces = s->piecesPlaced;
+            distinctStatesThisPiece = 0;
+        } else if (s->activeX != px || s->activeY != py || s->activeRot != pr) {
+            ++distinctStatesThisPiece;
+        }
+        px = s->activeX; py = s->activeY; pr = s->activeRot;
+        assert(s->pathProgress <= 255);
+        assert(s->pendingSpin <= 2);
+        assert(s->activeRot >= 0 && s->activeRot <= 3);
+    }
+    std::printf("      path replay: pieces=%u lines=%u attack=%u minStates=%d\n",
+                s->piecesPlaced, s->linesCleared, s->attackSent, minDistinct);
+    assert(s->piecesPlaced > 150);        // ~200 expected at 5 pps over 40s
+    assert(s->state == 1);                // still playing, no top-out
+    assert(minDistinct >= 2);             // every piece visibly moved through >=2 states
+}
+
+// ---------------------------------------------------------------------------
+// Tempo dilation: a placement whose path terminates in a spin must occupy at
+// least DILATION_MS of wall clock even at the maximum configured speed.
+// ---------------------------------------------------------------------------
+static void test_tempo_dilation() {
+    tb::BotInstance bot(42, 20.0f, 4, 60);
+    const tb::Snapshot* s = bot.snapshotPtr();
+    double spinStart = -1.0;
+    uint32_t spinPieces = 0;
+    double longest = 0.0;
+    bool sawSpin = false;
+    int spins = 0;
+    for (int f = 1; f <= 3600; ++f) {           // 60s of simulated 60fps, ~900 pieces
+        double now = f * 16.6667;
+        bot.tick(now);
+        if (spinStart < 0.0 && s->pendingSpin != 0) {
+            spinStart = now; spinPieces = s->piecesPlaced; sawSpin = true;
+        } else if (spinStart >= 0.0 && s->piecesPlaced != spinPieces) {
+            double dur = now - spinStart;
+            if (dur > longest) longest = dur;
+            assert(dur >= 190.0);   // 200ms tail minus one 16.7ms observation frame
+            ++spins;
+            spinStart = -1.0;
+        }
+    }
+    std::printf("      tempo dilation: spins=%d longestSpinPiece=%.1fms\n",
+                spins, longest);
+    assert(sawSpin);                // the bot must actually spin - PRD section 11
+    assert(longest >= 190.0);
+}
+
 int main() {
     RUN(test_types_constants);
     RUN(test_piece_cells_spawn_shapes);
@@ -2532,6 +2599,8 @@ int main() {
     RUN(test_thousand_piece_run);
     RUN(test_snapshot_layout);
     RUN(test_weight_table);
+    RUN(test_bot_instance_path_replay);
+    RUN(test_tempo_dilation);
     std::printf("all %d tests passed\n", g_testCount);
     return 0;
 }
