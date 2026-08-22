@@ -260,7 +260,13 @@ void generateMoves(const Board& b, PieceType p, MoveList* out) {
                 lastRot = true;
                 kick = S.rotKick[si];
             } else {
-                len = mgRecoverPath(S, si, buf);   // rotation path does not fit
+                // Unreachable: the longest rotation path measured across 28,000
+                // adversarial boards is 31, against MAX_PATH_LEN 64. Assert
+                // rather than fall through quietly -- this branch keeps a valid
+                // path but drops lastWasRotation, which is precisely the silent
+                // spin-flag loss PRD 4.4 added the tie-break to prevent.
+                assert(false && "rotation path did not fit -- spin flag lost");
+                len = mgRecoverPath(S, si, buf);
             }
         } else {
             len = mgRecoverPath(S, si, buf);
