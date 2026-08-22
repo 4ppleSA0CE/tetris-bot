@@ -1160,6 +1160,72 @@ static void test_mg_classify_kick_index_four_promotes() {
     assert(tb::classifyTSpin(b, tb::ROT_R, 0, 0, true, 255) == tb::SPIN_MINI);
 }
 
+// ------------------------------------------------------- movegen: BFS invariants
+
+// On an empty board every resting state is on the floor, so the placement count
+// is exactly the number of (rotation, x) pairs where the piece fits between the
+// walls, summed over the four rotations:
+//   I  7 + 10 +  7 + 10 = 34      O  9 + 9 + 9 + 9 = 36  (O's four rotation
+//   J  8 +  9 +  8 +  9 = 34         states are the same four cells but are
+//   L  34   S  34   T  34   Z  34    distinct (x,y,rot) keys, so all four count)
+static void test_mg_empty_board_placement_counts() {
+    const tb::Board empty{};
+    const int expected[tb::NUM_PIECES] = { 34, 34, 34, 36, 34, 34, 34 };
+    static tb::MoveList ml;
+    for (int pi = 0; pi < tb::NUM_PIECES; ++pi) {
+        const tb::PieceType p = static_cast<tb::PieceType>(pi);
+        tb::generateMoves(empty, p, &ml);
+        if (ml.count != expected[pi])
+            std::printf("piece %d: got %d placements, expected %d\n",
+                        pi, ml.count, expected[pi]);
+        assert(ml.count == expected[pi]);
+    }
+}
+
+// Two invariants that must hold for EVERY placement of EVERY piece on EVERY
+// board: the placement is a legal position, and it cannot fall any further.
+static void test_mg_every_placement_is_legal_and_grounded() {
+    const char* midRows[] = {
+        "..........",
+        "..........",
+        "#...####..",
+        "##..#####.",
+        "###.#####.",
+        "####.####.",
+        "#####.####",
+        "######.###",
+        "#######.##",
+        "########.#",
+    };
+    const tb::Board boards[2] = { tb::Board{}, tb::boardFromAscii(midRows, 10) };
+    static tb::MoveList ml;
+    for (int bi = 0; bi < 2; ++bi) {
+        for (int pi = 0; pi < tb::NUM_PIECES; ++pi) {
+            const tb::PieceType p = static_cast<tb::PieceType>(pi);
+            tb::generateMoves(boards[bi], p, &ml);
+            assert(ml.count > 0);
+            assert(ml.count <= tb::MAX_PLACEMENTS);
+            for (int i = 0; i < ml.count; ++i) {
+                const tb::Placement& pl = ml.items[i];
+                assert(tb::mgInStateBounds(pl.x, pl.y));
+                assert(!tb::collides(boards[bi], p, pl.rot, pl.x, pl.y));
+                assert(tb::collides(boards[bi], p, pl.rot, pl.x, pl.y - 1));
+                assert(pl.pathLen <= tb::MAX_PATH_LEN);
+                assert(pl.spin == tb::SPIN_NONE || p == tb::PIECE_T);
+            }
+        }
+    }
+}
+
+// A board whose spawn row is blocked yields no moves rather than garbage.
+static void test_mg_topped_out_board_yields_nothing() {
+    tb::Board b{};
+    for (int y = 0; y < tb::BOARD_H; ++y) b.rows[y] = tb::FULL_ROW;
+    static tb::MoveList ml;
+    tb::generateMoves(b, tb::PIECE_T, &ml);
+    assert(ml.count == 0);
+}
+
 int main() {
     RUN(test_types_constants);
     RUN(test_piece_cells_spawn_shapes);
@@ -1228,6 +1294,9 @@ int main() {
     RUN(test_mg_classify_counts_walls_and_floor);
     RUN(test_mg_classify_mini_vs_full_same_centre);
     RUN(test_mg_classify_kick_index_four_promotes);
+    RUN(test_mg_empty_board_placement_counts);
+    RUN(test_mg_every_placement_is_legal_and_grounded);
+    RUN(test_mg_topped_out_board_yields_nothing);
     std::printf("all %d tests passed\n", g_testCount);
     return 0;
 }
