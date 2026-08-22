@@ -18,7 +18,9 @@
 #include "core/attack.h"
 #include "core/movegen.h"
 #include "core/eval.h"
+#include "core/search.h"
 #include <cmath>
+#include <chrono>
 
 static int g_testCount = 0;
 
@@ -1943,6 +1945,111 @@ static void test_weight_by_name() {
     assert(tb::weightName(tb::weightNameCount())[0] == '\0');
 }
 
+// ---- Plan 3: search --------------------------------------------------------
+
+// [[maybe_unused]]: this helper is used by the search budget tests added in a later task;
+// -Wall would otherwise flag it as an unused static function here, and the build is
+// warning-free by policy.
+[[maybe_unused]] static double msSince(std::chrono::steady_clock::time_point t0) {
+    return std::chrono::duration<double, std::milli>(
+               std::chrono::steady_clock::now() - t0).count();
+}
+
+static void test_search_empty_board() {
+    tb::Board b{};
+    tb::PieceType queue[tb::PREVIEW_LEN] = {
+        tb::PIECE_I, tb::PIECE_O, tb::PIECE_T, tb::PIECE_L, tb::PIECE_J
+    };
+    tb::SearchConfig cfg;
+    assert(cfg.depth == 5);
+    assert(cfg.beamWidth == 100);
+    assert(std::fabs(cfg.gamma - 0.95f) < 1e-6f);
+    assert(std::fabs(cfg.timeBudgetMs - 5.0f) < 1e-6f);
+
+    tb::SearchResult r = tb::search(b, tb::PIECE_T, tb::PIECE_NONE, queue,
+                                    tb::PREVIEW_LEN, false, 0, cfg);
+    assert(r.valid);
+    // the returned placement must be legal and resting on something
+    tb::PieceType placed = r.useHold ? queue[0] : tb::PIECE_T;
+    assert(!tb::collides(b, placed, r.placement.rot, r.placement.x, r.placement.y));
+    assert(tb::collides(b, placed, r.placement.rot, r.placement.x,
+                        (int)r.placement.y - 1));
+    // and it must be a state the BFS could have produced. NOT `y >= 0`: the origin is the
+    // bounding box's lower-left corner, so a piece whose box has an empty bottom row rests
+    // BELOW the floor line -- a T in ROT_0 rests at y == -1 and an I in ROT_0 at y == -2
+    // (plan 1's convention, plan 2's window MG_Y_MIN == -3). The two assertions above already
+    // prove the piece's own cells are on the board and grounded.
+    assert(tb::mgInStateBounds(r.placement.x, r.placement.y));
+}
+
+static void test_search_is_anytime() {
+    // A one-microsecond budget must still produce a legal move: the anytime property is
+    // "always has an answer", not "returns a good answer fast".
+    tb::Board b{};
+    tb::PieceType queue[tb::PREVIEW_LEN] = {
+        tb::PIECE_S, tb::PIECE_Z, tb::PIECE_L, tb::PIECE_J, tb::PIECE_T
+    };
+    tb::SearchConfig cfg;
+    cfg.timeBudgetMs = 0.001f;
+    tb::SearchResult r = tb::search(b, tb::PIECE_T, tb::PIECE_NONE, queue,
+                                    tb::PREVIEW_LEN, false, 0, cfg);
+    assert(r.valid);
+    assert(!tb::collides(b, tb::PIECE_T, r.placement.rot, r.placement.x, r.placement.y));
+}
+
+static void test_search_uses_full_depth() {
+    // A fixture where no row can ever be completed, so the ONLY thing the evaluator can see is
+    // how tall the stack got.
+    //   rows 0..3: columns 0..8 filled, column 9 empty  -> four permanently dead cells
+    //   rows 4..5: column 9 filled only                 -> the two-row roof that seals them in
+    // Rows 0..3 can never be completed: column 9 is unreachable under that roof. Rows 4 and 5
+    // already hold column 9, so they need columns 0..8 -- NINE cells. Every piece here is an
+    // O, and an O covers exactly two horizontally adjacent columns, so the cells any set of
+    // O's contributes to one row is a union of disjoint dominoes and its size is always EVEN.
+    // Nine is odd, so rows 4 and 5 can never be completed either. Row 6 and above need all
+    // ten columns; columns 0..7 stand at height 4, so an O reaches row 6 there only as the
+    // SECOND O on that column pair, making row 6 cost 2*4 + 1 = 9 O's against a queue of 5.
+    // (Verified by exhaustive enumeration: zero clears are reachable within five O's.)
+    tb::Board b{};
+    for (int y = 0; y < 4; ++y) b.rows[y] = (uint16_t)0x1FF;   // columns 0..8
+    b.rows[4] = (uint16_t)0x200;                               // column 9 only
+    b.rows[5] = (uint16_t)0x200;                               // column 9 only
+
+    tb::PieceType queue[tb::PREVIEW_LEN] = {
+        tb::PIECE_O, tb::PIECE_O, tb::PIECE_O, tb::PIECE_O, tb::PIECE_O
+    };
+
+    // Every weight zeroed except maxHeight = -1, so a node's score is exactly minus the max
+    // column height of its own board. No attack term, no clears, nothing else moves.
+    tb::SearchConfig one;
+    one.timeBudgetMs = 1e9f;          // no wall-clock cut-off: this test must be deterministic
+    one.depth        = 1;
+    one.weights      = tb::Weights{};
+    one.weights.maxHeight = -1.0f;
+
+    tb::SearchConfig five = one;
+    five.depth = 5;
+
+    tb::SearchResult r1 = tb::search(b, tb::PIECE_O, tb::PIECE_NONE, queue,
+                                     tb::PREVIEW_LEN, false, 0, one);
+    tb::SearchResult r5 = tb::search(b, tb::PIECE_O, tb::PIECE_NONE, queue,
+                                     tb::PREVIEW_LEN, false, 0, five);
+    assert(r1.valid && r5.valid);
+
+    // One O on this board reaches max height 6 (rows 4-5 on any column pair inside 0..8), which
+    // is also the roof's own height, and cannot do better.
+    assert(std::fabs(r1.score - (-6.0f)) < 1e-3f);
+
+    // Five O's cannot stay at 6: four of them tile columns 0..7 at rows 4-5, and that leaves
+    // column 8 at height 4 with both of its neighbours at 6, so the fifth O rests at row 6
+    // whichever pair it takes and the board ends up 8 tall. The deepest completed level's best
+    // score is therefore at most -7. A search that returns a maximum taken ACROSS depths
+    // reports -6 here, because a depth-0 child beats every deeper one, and it has silently
+    // discarded its own lookahead.
+    assert(r5.score <= -7.0f + 1e-3f);
+    assert(r5.score < r1.score);
+}
+
 int main() {
     RUN(test_types_constants);
     RUN(test_piece_cells_spawn_shapes);
@@ -2037,6 +2144,9 @@ int main() {
     RUN(test_eval_t_slots);
     RUN(test_eval_dot_product);
     RUN(test_weight_by_name);
+    RUN(test_search_empty_board);
+    RUN(test_search_is_anytime);
+    RUN(test_search_uses_full_depth);
     std::printf("all %d tests passed\n", g_testCount);
     return 0;
 }
