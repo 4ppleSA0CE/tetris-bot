@@ -1807,6 +1807,17 @@ static void test_eval_height_penalty() {
     assert(fw.heightPenalty == 4);
 }
 
+static void test_eval_row_transitions() {
+    // FIX_A rows y=0..4 are "#####.....", "####......", "###.......", "##........", "#........."
+    // each is wall->filled (0) ... filled->empty (1) ... empty->wall (2) == 2 per row, 5 rows.
+    assert(tb::extractFeatures(fixA()).rowTransitions == 10);
+    // FIX_B: y=0 "#.#......."  -> 4
+    //        y=1 "####......"  -> 2
+    //        y=2 "#.##......"  -> 4
+    //        y=3 "####......"  -> 2
+    assert(tb::extractFeatures(fixB()).rowTransitions == 12);
+}
+
 int main() {
     RUN(test_types_constants);
     RUN(test_piece_cells_spawn_shapes);
@@ -1895,6 +1906,7 @@ int main() {
     RUN(test_eval_covered_cells);
     RUN(test_eval_bumpiness);
     RUN(test_eval_height_penalty);
+    RUN(test_eval_row_transitions);
     std::printf("all %d tests passed\n", g_testCount);
     return 0;
 }
