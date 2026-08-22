@@ -1792,6 +1792,21 @@ static void test_eval_bumpiness() {
     assert(tb::extractFeatures(fixB()).bumpiness == 4);
 }
 
+static tb::Board fixWell() {
+    const char* rows[14];
+    for (int i = 0; i < 14; ++i) rows[i] = "#########.";
+    return tb::boardFromAscii(rows, 14);
+}
+
+static void test_eval_height_penalty() {
+    // FIX_A maxHeight 5, under the threshold of 12 -> 0
+    assert(tb::extractFeatures(fixA()).heightPenalty == 0);
+    // FIX_WELL maxHeight 14, e = 14 - 12 = 2, e*e == 4
+    tb::Features fw = tb::extractFeatures(fixWell());
+    assert(fw.maxHeight == 14);
+    assert(fw.heightPenalty == 4);
+}
+
 int main() {
     RUN(test_types_constants);
     RUN(test_piece_cells_spawn_shapes);
@@ -1879,6 +1894,7 @@ int main() {
     RUN(test_eval_holes);
     RUN(test_eval_covered_cells);
     RUN(test_eval_bumpiness);
+    RUN(test_eval_height_penalty);
     std::printf("all %d tests passed\n", g_testCount);
     return 0;
 }

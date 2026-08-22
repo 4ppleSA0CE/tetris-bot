@@ -42,6 +42,12 @@ Features extractFeatures(const Board& b) {
         f.bumpiness += (d < 0) ? -d : d;
     }
 
+    {
+        int e = f.maxHeight - HEIGHT_PENALTY_THRESHOLD;
+        if (e < 0) e = 0;
+        f.heightPenalty = e * e;   // squared: this is the cliff above row 12, not a slope
+    }
+
     return f;
 }
 
