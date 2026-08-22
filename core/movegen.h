@@ -1,4 +1,5 @@
 #pragma once
+#include <cassert>
 #include <cstdint>
 
 #include "core/types.h"
@@ -36,8 +37,12 @@ inline bool mgInStateBounds(int x, int y) {
     return x >= MG_X_MIN && x <= MG_X_MAX && y >= MG_Y_MIN && y <= MG_Y_MAX;
 }
 
-// Caller MUST have checked mgInStateBounds(x, y) first.
+// Caller MUST have checked mgInStateBounds(x, y) first. Violating this indexes
+// the 2464-entry visited array -- and the parallel BFS scratch arrays -- out of
+// bounds, which is memory corruption rather than a caught error. Free in
+// release; live in tb_tests, which builds with -UNDEBUG.
 inline int mgStateIndex(int x, int y, Rot r) {
+    assert(mgInStateBounds(x, y));
     return (((y - MG_Y_MIN) * MG_XS) + (x - MG_X_MIN)) * 4 + static_cast<int>(r);
 }
 
@@ -77,6 +82,15 @@ struct Placement {
     uint8_t  pathLen;
     Action   path[MAX_PATH_LEN];
 };
+
+// Every field is exactly one byte (the enums in core/types.h all declare an
+// explicit 1-byte underlying type), so the struct is alignment-1 with no
+// padding at all: 7 scalar bytes + 64 path bytes. Milestone 4's WASM snapshot
+// layout depends on this staying true, and a change to any enum's underlying
+// type would silently introduce padding -- so pin it here rather than discover
+// it as a layout mismatch across the JS boundary.
+static_assert(sizeof(Placement) == 71, "Placement must stay packed at 71 bytes");
+static_assert(alignof(Placement) == 1, "Placement must stay alignment-1");
 
 struct MoveList {
     int       count;
