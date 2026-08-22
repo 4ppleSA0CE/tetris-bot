@@ -1910,9 +1910,23 @@ static void test_eval_dot_product() {
     // Every health weight is negative and every posture weight is positive. If this
     // assertion fires, someone inverted a sign and the bot will play upside down.
     assert(d.holes < 0.0f && d.coveredCells < 0.0f && d.bumpiness < 0.0f);
-    assert(d.maxHeight < 0.0f && d.heightPenalty < 0.0f && d.wellDepth < 0.0f);
+    assert(d.heightPenalty < 0.0f && d.wellDepth < 0.0f);
     assert(d.rowTransitions < 0.0f && d.columnTransitions < 0.0f);
     assert(d.tSlotCount > 0.0f && d.b2bActive > 0.0f && d.attackDealt > 0.0f);
+
+    // maxHeight is the ONE deliberate exception, and it is asserted positive rather than
+    // simply dropped from the check -- an accidental flip back to negative must still fail
+    // here. Rationale in core/weights.h: every other board-health term only punishes height,
+    // so with maxHeight negative too, nothing in the evaluator ever rewards building. That
+    // was measured, not assumed -- the all-negative vector produced a 2.68-row average stack,
+    // sd 1.03, zero tetrises across 300 pieces, and a max b2b of 1, because clearing a single
+    // pays no attack but still improves every negative health term. maxHeight positive, with
+    // heightPenalty as the cliff above row 12, is what produces PRD 1.1's climb-and-collapse.
+    assert(d.maxHeight > 0.0f);
+    // The pair only makes sense together: a reward for height bounded by a penalty above the
+    // threshold. If someone zeroes the cliff while leaving the reward on, the bot stacks to
+    // the ceiling.
+    assert(d.heightPenalty < 0.0f);
 }
 
 static void test_weight_by_name() {
@@ -1963,7 +1977,13 @@ static void test_search_empty_board() {
     assert(cfg.depth == 5);
     assert(cfg.beamWidth == 100);
     assert(std::fabs(cfg.gamma - 0.95f) < 1e-6f);
-    assert(std::fabs(cfg.timeBudgetMs - 5.0f) < 1e-6f);
+    // 4.8, not 5.0, and the difference is load-bearing. PRD 4.5 requires the search to
+    // COMPLETE inside 5 ms, but the loop breaks when `elapsed > timeBudgetMs` -- always
+    // just after the budget, never before. A 5.0 budget therefore puts p99 at 5.045 ms,
+    // failing the requirement by construction rather than by being slow. Aiming 0.2 ms
+    // low absorbs the overshoot: measured p99 4.850 ms. Kept as an assertion because the
+    // WASM layer in milestone 4 inherits this default and the frame budget depends on it.
+    assert(std::fabs(cfg.timeBudgetMs - 4.8f) < 1e-6f);
 
     tb::SearchResult r = tb::search(b, tb::PIECE_T, tb::PIECE_NONE, queue,
                                     tb::PREVIEW_LEN, false, 0, cfg);

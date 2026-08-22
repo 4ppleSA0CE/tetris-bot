@@ -9,7 +9,13 @@ struct SearchConfig {
     int   depth      = 5;
     int   beamWidth  = 100;
     float gamma      = 0.95f;
-    float timeBudgetMs = 5.0f;
+    // 4.8, not 5.0. PRD 4.5 requires the search to COMPLETE within 5 ms, and the loop
+    // breaks when `elapsed > timeBudgetMs` -- i.e. always just AFTER the budget, never
+    // before. Setting this to 5.0 therefore guarantees p99 lands above 5.0: measured
+    // p99 = 5.045 ms with a 5.0 budget, which fails the requirement by construction
+    // rather than by being slow. Aiming 0.2 ms low absorbs the overshoot so real
+    // completion time lands under the limit.
+    float timeBudgetMs = 4.8f;
     Weights weights  = defaultWeights();
 };
 

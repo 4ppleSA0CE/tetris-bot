@@ -11,7 +11,7 @@ namespace {
 constexpr int   MAX_BEAM         = 256;
 constexpr int   MAX_DEPTH        = 8;
 constexpr int   MAX_SEQ          = 1 + PREVIEW_LEN + 2;
-constexpr long  CLOCK_CHECK_MASK = 63;   // check the clock every 64 scored children
+constexpr long  CLOCK_CHECK_MASK = 31;   // check the clock every 32 scored children
 
 struct Node {
     Board     board;
