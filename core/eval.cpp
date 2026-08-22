@@ -53,6 +53,38 @@ int countTSlots(const Board& b) {
     return count;
 }
 
+Weights defaultWeights() {
+    Weights w;
+    w.holes             = W_HOLES;
+    w.coveredCells      = W_COVERED_CELLS;
+    w.bumpiness         = W_BUMPINESS;
+    w.maxHeight         = W_MAX_HEIGHT;
+    w.heightPenalty     = W_HEIGHT_PENALTY;
+    w.rowTransitions    = W_ROW_TRANSITIONS;
+    w.columnTransitions = W_COLUMN_TRANSITIONS;
+    w.wellDepth         = W_WELL_DEPTH;
+    w.tSlotCount        = W_T_SLOT_COUNT;
+    w.b2bActive         = W_B2B_ACTIVE;
+    w.attackDealt       = W_ATTACK_DEALT;
+    return w;
+}
+
+float evaluate(const Board& b, const Weights& w, bool b2bActive) {
+    const Features f = extractFeatures(b);
+    return w.holes             * static_cast<float>(f.holes)
+         + w.coveredCells      * static_cast<float>(f.coveredCells)
+         + w.bumpiness         * static_cast<float>(f.bumpiness)
+         + w.maxHeight         * static_cast<float>(f.maxHeight)
+         + w.heightPenalty     * static_cast<float>(f.heightPenalty)
+         + w.rowTransitions    * static_cast<float>(f.rowTransitions)
+         + w.columnTransitions * static_cast<float>(f.columnTransitions)
+         + w.wellDepth         * static_cast<float>(f.wellDepth)
+         + w.tSlotCount        * static_cast<float>(f.tSlotCount)
+         + w.b2bActive         * (b2bActive ? 1.0f : 0.0f);
+    // NOTE: w.attackDealt is intentionally absent. Attack is a per-move reward applied by
+    // the search with the gamma discount (PRD 4.5), not a property of the terminal board.
+}
+
 Features extractFeatures(const Board& b) {
     Features f{};
 

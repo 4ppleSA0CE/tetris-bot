@@ -1881,6 +1881,37 @@ static void test_eval_t_slots() {
     assert(tb::countTSlots(tb::Board{}) == 0);
 }
 
+static void test_eval_dot_product() {
+    // All-ones weights turn evaluate() into a plain sum of the features + b2b.
+    tb::Weights ones;
+    ones.holes = 1.0f; ones.coveredCells = 1.0f; ones.bumpiness = 1.0f;
+    ones.maxHeight = 1.0f; ones.heightPenalty = 1.0f; ones.rowTransitions = 1.0f;
+    ones.columnTransitions = 1.0f; ones.wellDepth = 1.0f; ones.tSlotCount = 1.0f;
+    ones.b2bActive = 1.0f; ones.attackDealt = 1.0f;
+
+    // FIX_B: holes 3 + covered 5 + bumpiness 4 + maxHeight 4 + heightPenalty 0
+    //      + rowTransitions 12 + columnTransitions 12 + wellDepth 0 + tSlots 0 == 40
+    tb::Board b = fixB();
+    assert(std::fabs(tb::evaluate(b, ones, false) - 40.0f) < 1e-3f);
+    // b2bActive adds exactly one unit of its weight, and attackDealt is NOT applied here
+    assert(std::fabs(tb::evaluate(b, ones, true) - 41.0f) < 1e-3f);
+
+    // A single non-zero weight isolates a single feature.
+    tb::Weights onlyHoles{};
+    onlyHoles.holes = -2.0f;
+    assert(std::fabs(tb::evaluate(b, onlyHoles, false) - (-6.0f)) < 1e-3f);
+
+    // Defaults: an empty board has every feature at 0, so it evaluates to exactly 0.
+    tb::Weights d = tb::defaultWeights();
+    assert(std::fabs(tb::evaluate(tb::Board{}, d, false)) < 1e-6f);
+    // Every health weight is negative and every posture weight is positive. If this
+    // assertion fires, someone inverted a sign and the bot will play upside down.
+    assert(d.holes < 0.0f && d.coveredCells < 0.0f && d.bumpiness < 0.0f);
+    assert(d.maxHeight < 0.0f && d.heightPenalty < 0.0f && d.wellDepth < 0.0f);
+    assert(d.rowTransitions < 0.0f && d.columnTransitions < 0.0f);
+    assert(d.tSlotCount > 0.0f && d.b2bActive > 0.0f && d.attackDealt > 0.0f);
+}
+
 int main() {
     RUN(test_types_constants);
     RUN(test_piece_cells_spawn_shapes);
@@ -1973,6 +2004,7 @@ int main() {
     RUN(test_eval_column_transitions);
     RUN(test_eval_well_depth);
     RUN(test_eval_t_slots);
+    RUN(test_eval_dot_product);
     std::printf("all %d tests passed\n", g_testCount);
     return 0;
 }
