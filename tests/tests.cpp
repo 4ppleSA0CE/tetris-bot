@@ -1226,6 +1226,138 @@ static void test_mg_topped_out_board_yields_nothing() {
     assert(ml.count == 0);
 }
 
+// ---------------------------------------------------- movegen: path replay
+
+// Replays a placement's path from spawn using the same primitives the engine
+// uses. Returns false if any action in the path is illegal.
+static bool mgReplayPath(const tb::Board& b, tb::PieceType p,
+                         const tb::Placement& pl,
+                         int* outX, int* outY, tb::Rot* outRot,
+                         uint8_t* outKick, bool* outLastRot) {
+    int x = tb::SPAWN_X, y = tb::SPAWN_Y;
+    tb::Rot r = tb::ROT_0;
+    uint8_t kick = 255;
+    bool lastRot = false;
+    if (tb::collides(b, p, r, x, y)) return false;
+
+    for (int i = 0; i < pl.pathLen; ++i) {
+        int nx = x, ny = y;
+        tb::Rot nr = r;
+        uint8_t nk = 255;
+        switch (pl.path[i]) {
+            case tb::ACT_LEFT:
+                nx = x - 1;
+                if (tb::collides(b, p, nr, nx, ny)) return false;
+                lastRot = false;
+                break;
+            case tb::ACT_RIGHT:
+                nx = x + 1;
+                if (tb::collides(b, p, nr, nx, ny)) return false;
+                lastRot = false;
+                break;
+            case tb::ACT_SOFT_DROP:
+                ny = y - 1;
+                if (tb::collides(b, p, nr, nx, ny)) return false;
+                lastRot = false;
+                break;
+            case tb::ACT_CW:
+                nr = tb::rotCW(r);
+                if (!tb::tryRotate(b, p, r, nr, x, y, &nx, &ny, &nk)) return false;
+                lastRot = true;
+                break;
+            case tb::ACT_CCW:
+                nr = tb::rotCCW(r);
+                if (!tb::tryRotate(b, p, r, nr, x, y, &nx, &ny, &nk)) return false;
+                lastRot = true;
+                break;
+            case tb::ACT_180:
+                nr = tb::rot180(r);
+                if (!tb::tryRotate(b, p, r, nr, x, y, &nx, &ny, &nk)) return false;
+                nk = 255;   // 180 never reports a five-test kick index
+                lastRot = true;
+                break;
+            default:
+                return false;
+        }
+        x = nx; y = ny; r = nr; kick = nk;
+    }
+    *outX = x; *outY = y; *outRot = r; *outKick = kick; *outLastRot = lastRot;
+    return true;
+}
+
+static void test_mg_every_path_replays_to_its_placement() {
+    const char* midRows[] = {
+        "..........",
+        "..........",
+        "#...####..",
+        "##..#####.",
+        "###.#####.",
+        "####.####.",
+        "#####.####",
+        "######.###",
+        "#######.##",
+        "########.#",
+    };
+    const char* tstRows[] = {
+        "..........",
+        "##........",
+        "#.........",
+        "#.########",
+        "#..#######",
+        "#.########",
+    };
+    const char* tsdRows[] = {
+        "..........",
+        "...#......",
+        "###...####",
+        "####.#####",
+    };
+    const tb::Board boards[4] = {
+        tb::Board{},
+        tb::boardFromAscii(midRows, 10),
+        tb::boardFromAscii(tstRows, 6),
+        tb::boardFromAscii(tsdRows, 4),
+    };
+    static tb::MoveList ml;
+    int checked = 0;
+    for (int bi = 0; bi < 4; ++bi) {
+        for (int pi = 0; pi < tb::NUM_PIECES; ++pi) {
+            const tb::PieceType p = static_cast<tb::PieceType>(pi);
+            tb::generateMoves(boards[bi], p, &ml);
+            for (int i = 0; i < ml.count; ++i) {
+                const tb::Placement& pl = ml.items[i];
+                int rx = 0, ry = 0;
+                tb::Rot rr = tb::ROT_0;
+                uint8_t rk = 200;
+                bool rlast = false;
+                const bool ok = mgReplayPath(boards[bi], p, pl,
+                                             &rx, &ry, &rr, &rk, &rlast);
+                if (!ok || rx != pl.x || ry != pl.y || rr != pl.rot ||
+                    rlast != pl.lastWasRotation || rk != pl.kickIndex) {
+                    std::printf("replay mismatch: board %d piece %d "
+                                "claimed (x=%d y=%d rot=%d lastRot=%d kick=%u len=%u) "
+                                "replayed ok=%d (x=%d y=%d rot=%d lastRot=%d kick=%u)\n",
+                                bi, pi, pl.x, pl.y, static_cast<int>(pl.rot),
+                                pl.lastWasRotation ? 1 : 0,
+                                static_cast<unsigned>(pl.kickIndex),
+                                static_cast<unsigned>(pl.pathLen),
+                                ok ? 1 : 0, rx, ry, static_cast<int>(rr),
+                                rlast ? 1 : 0, static_cast<unsigned>(rk));
+                }
+                assert(ok);
+                assert(rx == pl.x);
+                assert(ry == pl.y);
+                assert(rr == pl.rot);
+                assert(rlast == pl.lastWasRotation);
+                assert(rk == pl.kickIndex);
+                ++checked;
+            }
+        }
+    }
+    // 4 boards x 7 pieces, every one of which has placements.
+    assert(checked > 700);
+}
+
 int main() {
     RUN(test_types_constants);
     RUN(test_piece_cells_spawn_shapes);
@@ -1297,6 +1429,7 @@ int main() {
     RUN(test_mg_empty_board_placement_counts);
     RUN(test_mg_every_placement_is_legal_and_grounded);
     RUN(test_mg_topped_out_board_yields_nothing);
+    RUN(test_mg_every_path_replays_to_its_placement);
     std::printf("all %d tests passed\n", g_testCount);
     return 0;
 }
