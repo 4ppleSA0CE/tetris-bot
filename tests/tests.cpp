@@ -1912,6 +1912,37 @@ static void test_eval_dot_product() {
     assert(d.tSlotCount > 0.0f && d.b2bActive > 0.0f && d.attackDealt > 0.0f);
 }
 
+static void test_weight_by_name() {
+    tb::Weights w = tb::defaultWeights();
+
+    assert(tb::setWeightByName(w, "tSlotCount", 240.0f));
+    assert(std::fabs(w.tSlotCount - 240.0f) < 1e-3f);
+    assert(tb::setWeightByName(w, "maxHeight", -14.0f));
+    assert(std::fabs(w.maxHeight - (-14.0f)) < 1e-3f);
+    assert(tb::setWeightByName(w, "attackDealt", 0.0f));
+    assert(std::fabs(w.attackDealt) < 1e-6f);
+    // untouched fields keep their defaults
+    assert(std::fabs(w.holes - tb::defaultWeights().holes) < 1e-3f);
+
+    // unknown names are rejected, not silently ignored
+    assert(!tb::setWeightByName(w, "maxheight", 1.0f));
+    assert(!tb::setWeightByName(w, "", 1.0f));
+    assert(!tb::setWeightByName(w, "tSlotCounts", 1.0f));
+
+    // the name table is exhaustive and every listed name is settable
+    assert(tb::weightNameCount() == 11);
+    for (int i = 0; i < tb::weightNameCount(); ++i) {
+        assert(tb::setWeightByName(w, tb::weightName(i), 1.0f));
+    }
+    assert(std::fabs(w.holes - 1.0f) < 1e-3f);
+    assert(std::fabs(w.wellDepth - 1.0f) < 1e-3f);
+    assert(std::fabs(w.b2bActive - 1.0f) < 1e-3f);
+
+    // out-of-range indices return the empty string, never a null pointer
+    assert(tb::weightName(-1)[0] == '\0');
+    assert(tb::weightName(tb::weightNameCount())[0] == '\0');
+}
+
 int main() {
     RUN(test_types_constants);
     RUN(test_piece_cells_spawn_shapes);
@@ -2005,6 +2036,7 @@ int main() {
     RUN(test_eval_well_depth);
     RUN(test_eval_t_slots);
     RUN(test_eval_dot_product);
+    RUN(test_weight_by_name);
     std::printf("all %d tests passed\n", g_testCount);
     return 0;
 }

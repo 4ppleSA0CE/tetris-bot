@@ -151,4 +151,48 @@ Features extractFeatures(const Board& b) {
     return f;
 }
 
+namespace {
+
+struct WeightEntry { const char* name; float Weights::* field; };
+
+const WeightEntry kWeightTable[] = {
+    { "holes",             &Weights::holes },
+    { "coveredCells",      &Weights::coveredCells },
+    { "bumpiness",         &Weights::bumpiness },
+    { "maxHeight",         &Weights::maxHeight },
+    { "heightPenalty",     &Weights::heightPenalty },
+    { "rowTransitions",    &Weights::rowTransitions },
+    { "columnTransitions", &Weights::columnTransitions },
+    { "wellDepth",         &Weights::wellDepth },
+    { "tSlotCount",        &Weights::tSlotCount },
+    { "b2bActive",         &Weights::b2bActive },
+    { "attackDealt",       &Weights::attackDealt },
+};
+constexpr int kWeightCount = static_cast<int>(sizeof(kWeightTable) / sizeof(kWeightTable[0]));
+
+bool sameName(const char* a, const char* b) {
+    while (*a && *b) { if (*a != *b) return false; ++a; ++b; }
+    return *a == '\0' && *b == '\0';
+}
+
+} // namespace
+
+bool setWeightByName(Weights& w, const char* name, float value) {
+    if (name == nullptr || name[0] == '\0') return false;
+    for (int i = 0; i < kWeightCount; ++i) {
+        if (sameName(kWeightTable[i].name, name)) {
+            w.*(kWeightTable[i].field) = value;
+            return true;
+        }
+    }
+    return false;
+}
+
+int weightNameCount() { return kWeightCount; }
+
+const char* weightName(int i) {
+    if (i < 0 || i >= kWeightCount) return "";
+    return kWeightTable[i].name;
+}
+
 } // namespace tb

@@ -43,4 +43,15 @@ float evaluate(const Board& b, const Weights& w, bool b2bActive);
 
 int countTSlots(const Board& b);
 
+// Runtime weight override by field name. Names are exactly the Weights field names, e.g.
+// "tSlotCount", "maxHeight", "attackDealt". Returns false for an unknown name so the CLI can
+// report a typo instead of silently ignoring the flag.
+//
+// THIS IS THE ONLY WEIGHT-NAME TABLE IN THE PROJECT. The CLI's --weights flag and the WASM
+// binding layer both read it from here. Do not declare a second one in bindings/ -- two
+// definitions of tb::weightName is a link error in tb_tests and in dist/bot.js.
+bool        setWeightByName(Weights& w, const char* name, float value);
+int         weightNameCount();                 // 11, one per Weights field
+const char* weightName(int i);                 // "" when i is out of range, never nullptr
+
 } // namespace tb
