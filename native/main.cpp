@@ -6,17 +6,24 @@
 // placements, no search, no evaluation, no spin classification. The search
 // milestone adds --depth and --width.
 
+#include <algorithm>
 #include <chrono>
+#include <cmath>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <string>
+#include <vector>
 
 #include "core/attack.h"
 #include "core/board.h"
+#include "core/eval.h"
+#include "core/game.h"
 #include "core/movegen.h"
 #include "core/piece.h"
 #include "core/rng.h"
+#include "core/search.h"
 #include "core/srs.h"
 #include "core/types.h"
 
@@ -47,13 +54,17 @@ void printBoard(const tb::Board& b, unsigned index) {
 
 void usage() {
     std::fprintf(stderr,
-                 "usage: tetris_bot [--seed N] [--pieces N] --random [--print] [--stats]\n"
-                 "       tetris_bot --movegen [FIXTURE|all]\n"
-                 "  --random   play uniformly random hard-drop placements\n"
-                 "  --movegen  inspect generated T placements for a fixture\n"
-                 "  --movegen-bench [N]  time generateMoves throughput\n"
-                 "  --print    dump the visible board after every piece\n"
-                 "  --stats    print totals at the end\n");
+                 "usage: tetris_bot [--seed N] [--pieces N] [--stats] [--print]\n"
+                 "                  [--depth N] [--width N] [--budget MS] [--heights]\n"
+                 "                  [--weights name=value,...]\n"
+                 "       tetris_bot --random [--seed N] [--pieces N] [--print] [--stats]\n"
+                 "       tetris_bot --movegen <fixture|all>\n"
+                 "       tetris_bot --movegen-bench [iters]\n"
+                 "\n"
+                 "  (default)         drive the bot with search + eval and report --stats\n"
+                 "  --random          plan 1's uniformly random hard-drop placements\n"
+                 "  --movegen         plan 2's move-generation inspection gate\n"
+                 "  --movegen-bench   plan 2's generateMoves throughput benchmark\n");
 }
 
 } // namespace
@@ -289,59 +300,81 @@ int runMovegenBench(int iters) {
 
 } // namespace
 
-int main(int argc, char** argv) {
-    for (int i = 1; i < argc; ++i) {
-        if (std::strcmp(argv[i], "--movegen") == 0) {
-            const char* which = (i + 1 < argc) ? argv[i + 1] : "all";
-            return runMovegenMode(which);
-        }
-        if (std::strcmp(argv[i], "--movegen-bench") == 0) {
-            const int iters = (i + 1 < argc) ? std::atoi(argv[i + 1]) : 0;
-            return runMovegenBench(iters > 0 ? iters : 20000);
-        }
+namespace {
+
+// Every numeric flag on this CLI goes through one of these two. std::atoi maps "abc" to 0 and
+// accepts "-5"; either runs a degenerate loop and prints a stats block that is shape-identical
+// to a real result, and a scripted weight sweep would record that as data. Reject it loudly.
+long parseIntArg(const char* flag, const char* text, long lo, long hi) {
+    char* end = nullptr;
+    const long v = std::strtol(text, &end, 10);
+    if (end == text || *end != '\0' || v < lo || v > hi) {
+        std::fprintf(stderr, "%s must be an integer in [%ld, %ld]: %s\n", flag, lo, hi, text);
+        std::exit(2);
     }
+    return v;
+}
 
-    uint32_t seed = 42;
-    int pieces = 50;
-    bool doPrint = false;
-    bool doStats = false;
-    bool randomMode = false;
+// The !(v > 0.0f) form also rejects a NaN, which every plain comparison would quietly accept.
+float parsePositiveFloatArg(const char* flag, const char* text) {
+    char* end = nullptr;
+    const float v = std::strtof(text, &end);
+    if (end == text || *end != '\0' || !(v > 0.0f)) {
+        std::fprintf(stderr, "%s must be a positive number: %s\n", flag, text);
+        std::exit(2);
+    }
+    return v;
+}
 
-    for (int i = 1; i < argc; ++i) {
-        if (std::strcmp(argv[i], "--seed") == 0 && i + 1 < argc) {
-            seed = static_cast<uint32_t>(std::strtoul(argv[++i], nullptr, 10));
-        } else if (std::strcmp(argv[i], "--pieces") == 0 && i + 1 < argc) {
-            // atoi() would turn "abc" into 0 and accept "-5", either of which
-            // runs the loop zero times and prints an all-zero stats block that
-            // is shape-identical to a real run. Scripted weight-tuning sweeps
-            // would silently record that as data, so reject it loudly instead.
-            char* end = nullptr;
-            const long v = std::strtol(argv[++i], &end, 10);
-            if (end == argv[i] || *end != '\0' || v <= 0) {
-                std::fprintf(stderr, "--pieces must be a positive integer: %s\n", argv[i]);
-                usage();
-                return 2;
+void listWeightNames(std::FILE* out) {
+    for (int i = 0; i < tb::weightNameCount(); ++i)
+        std::fprintf(out, " %s", tb::weightName(i));
+    std::fprintf(out, "\n");
+}
+
+// Parses "name=value" or "name=value,name=value,...". Returns false on the first bad token.
+bool applyWeightSpec(tb::Weights& w, const char* spec) {
+    const std::string s(spec);
+    size_t start = 0;
+    while (start <= s.size()) {
+        const size_t comma = s.find(',', start);
+        const std::string tok =
+            s.substr(start, comma == std::string::npos ? std::string::npos : comma - start);
+        if (!tok.empty()) {
+            const size_t eq = tok.find('=');
+            if (eq == std::string::npos) {
+                std::fprintf(stderr, "bad --weights token '%s' (want name=value)\n", tok.c_str());
+                return false;
             }
-            pieces = static_cast<int>(v);
-        } else if (std::strcmp(argv[i], "--print") == 0) {
-            doPrint = true;
-        } else if (std::strcmp(argv[i], "--stats") == 0) {
-            doStats = true;
-        } else if (std::strcmp(argv[i], "--random") == 0) {
-            randomMode = true;
-        } else {
-            std::fprintf(stderr, "unknown or incomplete option: %s\n", argv[i]);
-            usage();
-            return 2;
+            const std::string name = tok.substr(0, eq);
+            // strtof with a discarded end pointer would read "tSlotCount=abc" as 0 and run a
+            // sweep at a weight nobody asked for, so the whole value has to parse.
+            const char* valueText = tok.c_str() + eq + 1;
+            char* end = nullptr;
+            const float value = std::strtof(valueText, &end);
+            if (end == valueText || *end != '\0') {
+                std::fprintf(stderr, "bad --weights value '%s' in token '%s'\n", valueText,
+                             tok.c_str());
+                return false;
+            }
+            if (!tb::setWeightByName(w, name.c_str(), value)) {
+                std::fprintf(stderr, "unknown weight '%s'. known:", name.c_str());
+                listWeightNames(stderr);
+                return false;
+            }
         }
+        if (comma == std::string::npos) break;
+        start = comma + 1;
     }
+    return true;
+}
 
-    if (!randomMode) {
-        std::fprintf(stderr, "no mode selected\n");
-        usage();
-        return 2;
-    }
+} // namespace
 
+// Plan 1's random-play harness, moved verbatim out of main() and otherwise untouched. It is the
+// only mode that does not call search(), which is exactly what makes it useful when the search
+// itself is the thing under suspicion.
+static int runRandomMode(uint32_t seed, int pieces, bool doPrint, bool doStats) {
     tb::Bag bag(seed);
     uint32_t rngState = (seed == 0u) ? 0x9E3779B9u : seed;
 
@@ -451,5 +484,136 @@ int main(int argc, char** argv) {
         std::printf("%-12s%5u\n", "top-outs", st.topouts);
     }
 
+
+    return 0;
+}
+
+int main(int argc, char** argv) {
+    // PLAN 2'S DISPATCH, UNCHANGED AND STILL THE FIRST STATEMENT IN main(). --movegen is the
+    // PRD 10 gate; it must keep working forever. It never touches the search, which is exactly
+    // why it stays trustworthy when the search is the thing under suspicion.
+    for (int i = 1; i < argc; ++i) {
+        if (std::strcmp(argv[i], "--movegen") == 0) {
+            const char* which = (i + 1 < argc) ? argv[i + 1] : "all";
+            return runMovegenMode(which);
+        }
+        if (std::strcmp(argv[i], "--movegen-bench") == 0) {
+            const int iters = (i + 1 < argc) ? std::atoi(argv[i + 1]) : 0;
+            return runMovegenBench(iters > 0 ? iters : 20000);
+        }
+    }
+
+    uint32_t seed   = 1;
+    int      pieces = 100;
+    bool     stats = false, print = false, heights = false, randomMode = false;
+    tb::SearchConfig cfg;
+
+    for (int i = 1; i < argc; ++i) {
+        const char* a = argv[i];
+        auto need = [&](const char* what) -> const char* {
+            if (i + 1 >= argc) { std::fprintf(stderr, "%s needs a value\n", what); std::exit(2); }
+            return argv[++i];
+        };
+        if      (!std::strcmp(a, "--seed"))
+            seed = static_cast<uint32_t>(parseIntArg("--seed", need("--seed"), 0, 4294967295L));
+        else if (!std::strcmp(a, "--pieces"))
+            pieces = static_cast<int>(parseIntArg("--pieces", need("--pieces"), 1, 2147483647L));
+        else if (!std::strcmp(a, "--depth"))
+            cfg.depth = static_cast<int>(parseIntArg("--depth", need("--depth"), 1, 2147483647L));
+        else if (!std::strcmp(a, "--width"))
+            cfg.beamWidth = static_cast<int>(parseIntArg("--width", need("--width"), 1, 2147483647L));
+        else if (!std::strcmp(a, "--budget"))
+            cfg.timeBudgetMs = parsePositiveFloatArg("--budget", need("--budget"));
+        else if (!std::strcmp(a, "--weights")) { if (!applyWeightSpec(cfg.weights, need("--weights"))) return 2; }
+        else if (!std::strcmp(a, "--stats"))   stats = true;
+        else if (!std::strcmp(a, "--heights")) heights = true;
+        else if (!std::strcmp(a, "--print"))   print = true;
+        else if (!std::strcmp(a, "--random"))  randomMode = true;
+        else {
+            std::fprintf(stderr, "unknown flag '%s'\n", a);
+            usage();
+            std::fprintf(stderr, "weights:");
+            listWeightNames(stderr);
+            return 2;
+        }
+    }
+
+    // PLAN 1'S MODE, still reachable and still meaning what it meant.
+    if (randomMode) return runRandomMode(seed, pieces, print, stats);
+
+    tb::Game game(seed, cfg);
+
+    std::vector<float> times;
+    times.reserve(static_cast<size_t>(pieces));
+
+    uint32_t topOuts = 0;
+    uint32_t basePieces = 0, baseLines = 0, baseAttack = 0, baseTspins = 0;
+    uint16_t maxB2b = 0;
+    double   hSum = 0.0, hSumSq = 0.0;
+    int      hMin = tb::BOARD_H + 1, hMax = 0;
+
+    while (basePieces + game.piecesPlaced() < static_cast<uint32_t>(pieces)) {
+        const uint32_t before = game.piecesPlaced();
+        game.stepPiece();
+        if (game.piecesPlaced() != before) {
+            times.push_back(game.lastSearchMs());
+            if (game.maxB2b() > maxB2b) maxB2b = game.maxB2b();
+            int h = 0;
+            for (int c = 0; c < tb::BOARD_W; ++c) {
+                const int hc = tb::columnHeight(game.board(), c);
+                if (hc > h) h = hc;
+            }
+            hSum   += static_cast<double>(h);
+            hSumSq += static_cast<double>(h) * static_cast<double>(h);
+            if (h < hMin) hMin = h;
+            if (h > hMax) hMax = h;
+            // plan 1's printBoard, reused: same "--- piece N ---" header, same frame.
+            if (print) printBoard(game.board(), static_cast<unsigned>(basePieces + game.piecesPlaced()));
+        }
+        if (game.toppedOut()) {
+            ++topOuts;
+            basePieces += game.piecesPlaced();
+            baseLines  += game.linesCleared();
+            baseAttack += game.attackSent();
+            baseTspins += game.tSpinCount();
+            game.reset(seed + topOuts);
+        }
+    }
+
+    const uint32_t totalPieces = basePieces + game.piecesPlaced();
+    const uint32_t totalLines  = baseLines  + game.linesCleared();
+    const uint32_t totalAttack = baseAttack + game.attackSent();
+    const uint32_t totalTspins = baseTspins + game.tSpinCount();
+
+    if (stats) {
+        std::sort(times.begin(), times.end());
+        auto pct = [&](double p) -> double {
+            if (times.empty()) return 0.0;
+            size_t idx = static_cast<size_t>(p * static_cast<double>(times.size() - 1) + 0.5);
+            if (idx >= times.size()) idx = times.size() - 1;
+            return static_cast<double>(times[idx]);
+        };
+        const double rate = totalPieces ? 100.0 * static_cast<double>(totalTspins) /
+                                              static_cast<double>(totalPieces)
+                                        : 0.0;
+        std::printf("%-12s%5u\n", "pieces", totalPieces);
+        std::printf("%-12s%5u\n", "lines",  totalLines);
+        std::printf("%-12s%5u\n", "attack", totalAttack);
+        std::printf("%-12s%5u   (%.2f / 100)\n", "t-spins", totalTspins, rate);
+        std::printf("%-12s%5u\n", "max b2b", static_cast<unsigned>(maxB2b));
+        std::printf("%-12s%5u\n", "top-outs", topOuts);
+        std::printf("%-12sp50 %.1f  p99 %.1f\n", "search ms", pct(0.50), pct(0.99));
+    }
+
+    if (heights) {
+        const double n = static_cast<double>(times.size());
+        const double avg = n > 0.0 ? hSum / n : 0.0;
+        double var = n > 0.0 ? (hSumSq / n - avg * avg) : 0.0;
+        if (var < 0.0) var = 0.0;
+        std::printf("%-12s%5.2f\n", "avg height", avg);
+        std::printf("%-12s%5d\n",   "min height", hMin > tb::BOARD_H ? 0 : hMin);
+        std::printf("%-12s%5d\n",   "max height", hMax);
+        std::printf("%-12s%5.2f\n", "height sd",  std::sqrt(var));
+    }
     return 0;
 }
