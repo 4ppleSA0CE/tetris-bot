@@ -86,11 +86,49 @@ export async function createTetrisBot(config = {}) {
         }
     }
     let destroyed = false;
+    // The core is handed a clock with all hidden time removed, so a tab that was
+    // backgrounded for ten minutes resumes exactly where it paused instead of
+    // trying to simulate ten minutes of Tetris on one frame.
+    //
+    // The subtracted span is measured from hiddenAtMs - the last timestamp the CORE
+    // actually saw - and not from the last timestamp tick() was called with. Those
+    // differ whenever ticks keep arriving while hidden (a host on setInterval, or the
+    // handful of frames a browser still delivers before it throttles): those ticks
+    // return early without advancing the core, so counting from them would leave the
+    // whole hidden span unsubtracted and hand the core a jump forward on resume -
+    // exactly the catch-up burst this code exists to prevent.
+    let hiddenOffsetMs = 0;
+    let hiddenAtMs = -1;
+    let lastVisibleNowMs = 0;
+    let pendingResume = false;
+    const onVisibilityChange = () => {
+        if (typeof document === 'undefined')
+            return;
+        if (document.visibilityState === 'hidden') {
+            if (hiddenAtMs < 0)
+                hiddenAtMs = lastVisibleNowMs;
+        }
+        else if (hiddenAtMs >= 0) {
+            // The gap is folded in on the next tick, once we see the new timestamp.
+            pendingResume = true;
+        }
+    };
+    if (typeof document !== 'undefined' && typeof document.addEventListener === 'function') {
+        document.addEventListener('visibilitychange', onVisibilityChange);
+    }
     const bot = {
         tick(nowMs) {
             if (destroyed || reducedMotion)
                 return;
-            mod.botTick(handle, nowMs);
+            if (typeof document !== 'undefined' && document.visibilityState === 'hidden')
+                return;
+            if (pendingResume) {
+                pendingResume = false;
+                hiddenOffsetMs += nowMs - hiddenAtMs;
+                hiddenAtMs = -1;
+            }
+            lastVisibleNowMs = nowMs;
+            mod.botTick(handle, nowMs - hiddenOffsetMs);
         },
         snapshot() {
             if (destroyed)
@@ -109,6 +147,9 @@ export async function createTetrisBot(config = {}) {
             if (destroyed)
                 return;
             destroyed = true;
+            if (typeof document !== 'undefined' && typeof document.removeEventListener === 'function') {
+                document.removeEventListener('visibilitychange', onVisibilityChange);
+            }
             mod.botDestroy(handle);
         },
     };
