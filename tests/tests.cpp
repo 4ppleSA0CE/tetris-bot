@@ -8,6 +8,7 @@
 #include <cassert>
 #include <cstdint>
 #include <cstddef>
+#include <string>
 #include <cstdio>
 
 #include "core/types.h"
@@ -22,6 +23,7 @@
 #include "core/search.h"
 #include "core/game.h"
 #include "bindings/snapshot.h"
+#include "bindings/bot_instance.h"
 #include <cmath>
 #include <chrono>
 
@@ -2387,6 +2389,43 @@ static void test_snapshot_layout() {
     assert(offsetof(Snapshot, state)        == 152);
 }
 
+// ---------------------------------------------------------------------------
+// core/eval.h owns the weight names, the count, and the order. This test pins
+// bindings' index->slot bridge to THAT table: for every index, the slot the
+// bridge returns must be the field setWeightByName() writes for the same name.
+// If plan 3 ever reorders tb::Weights, this fails instead of silently tuning
+// the wrong feature through JS.
+// ---------------------------------------------------------------------------
+static void test_weight_table() {
+    assert(tb::weightNameCount() == 11);
+    static const char* expected[11] = {
+        "holes", "coveredCells", "bumpiness", "maxHeight", "heightPenalty",
+        "rowTransitions", "columnTransitions", "wellDepth", "tSlotCount",
+        "b2bActive", "attackDealt"
+    };
+    for (int i = 0; i < tb::weightNameCount(); ++i) {
+        assert(std::string(tb::weightName(i)) == expected[i]);
+    }
+    // core/eval.h's out-of-range contract is the empty string, NOT nullptr.
+    assert(tb::weightName(-1)[0] == '\0');
+    assert(tb::weightName(11)[0] == '\0');
+
+    // The bridge and setWeightByName must agree, index for index.
+    for (int i = 0; i < tb::weightNameCount(); ++i) {
+        tb::Weights w = tb::defaultWeights();
+        const float sentinel = 1234.5f + static_cast<float>(i);
+        assert(tb::setWeightByName(w, tb::weightName(i), sentinel));
+        const float* slot = tb::bindingsWeightSlot(w, i);
+        assert(slot != nullptr);
+        assert(*slot == sentinel);
+    }
+    tb::Weights w = tb::defaultWeights();
+    assert(tb::bindingsWeightSlot(w, -1) == nullptr);
+    assert(tb::bindingsWeightSlot(w, 11) == nullptr);
+    assert(tb::bindingsWeightSlot(w, 0) == &w.holes);        // spot-check the two ends
+    assert(tb::bindingsWeightSlot(w, 10) == &w.attackDealt);
+}
+
 int main() {
     RUN(test_types_constants);
     RUN(test_piece_cells_spawn_shapes);
@@ -2492,6 +2531,7 @@ int main() {
     RUN(test_game_determinism);
     RUN(test_thousand_piece_run);
     RUN(test_snapshot_layout);
+    RUN(test_weight_table);
     std::printf("all %d tests passed\n", g_testCount);
     return 0;
 }

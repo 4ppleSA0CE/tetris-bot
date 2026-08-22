@@ -32,6 +32,13 @@ set(TB_CORE_SOURCES
     core/game.cpp
 )
 
+# Sources under bindings/ that the NATIVE test binary links. The wasm build in
+# build.sh lists its own sources and does not read this variable. The tetris_bot
+# CLI deliberately does not link these - it drives tb::Game, not BotInstance.
+set(TB_BINDINGS_SOURCES
+    bindings/bot_instance.cpp
+)
+
 # Shared include dir and warning flags. Every target links this, so a new target
 # (notably the if(EMSCRIPTEN) one the wasm milestone adds) cannot silently miss
 # them by forgetting to repeat two lines.
@@ -44,7 +51,7 @@ target_compile_options(tb_options INTERFACE -Wall -Wextra -Wconversion -Wsign-co
 add_executable(tetris_bot native/main.cpp ${TB_CORE_SOURCES})
 target_link_libraries(tetris_bot PRIVATE tb_options)
 
-add_executable(tb_tests tests/tests.cpp ${TB_CORE_SOURCES})
+add_executable(tb_tests tests/tests.cpp ${TB_CORE_SOURCES} ${TB_BINDINGS_SOURCES})
 target_link_libraries(tb_tests PRIVATE tb_options)
 # RelWithDebInfo puts -DNDEBUG in CMAKE_CXX_FLAGS_RELWITHDEBINFO, which compiles
 # every assert() to nothing. target_compile_options lands AFTER those flags on
