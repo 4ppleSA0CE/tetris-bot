@@ -411,7 +411,8 @@ int main(int argc, char** argv) {
         info.spin = tb::SPIN_NONE;   // random play never classifies a spin
         info.perfectClear = (cleared > 0) && tb::isEmpty(board);
 
-        st.attack += static_cast<uint32_t>(tb::computeAttack(info, b2bActive, combo));
+        st.attack += static_cast<uint32_t>(tb::computeAttack(info, /*b2bActive=*/b2bActive,
+                                                             /*comboCount=*/combo));
         st.lines += static_cast<uint32_t>(cleared);
         if (info.spin != tb::SPIN_NONE && cleared > 0) ++st.tspins;
 
