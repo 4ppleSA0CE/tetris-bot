@@ -231,10 +231,10 @@ int runMovegenMode(const char* which) {
         if (!mgRunFixture(MG_FIXTURES[i])) all = false;
     }
     if (!matched) {
-        std::printf("unknown fixture '%s'. known: all", which);
+        std::fprintf(stderr, "unknown fixture '%s'. known: all", which);
         for (int i = 0; i < MG_FIXTURE_COUNT; ++i)
-            std::printf(" %s", MG_FIXTURES[i].name);
-        std::printf("\n");
+            std::fprintf(stderr, " %s", MG_FIXTURES[i].name);
+        std::fprintf(stderr, "\n");
         return 2;
     }
     std::printf("GATE ALL: %s\n", all ? "PASS" : "FAIL");
