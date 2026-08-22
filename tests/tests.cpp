@@ -1947,10 +1947,8 @@ static void test_weight_by_name() {
 
 // ---- Plan 3: search --------------------------------------------------------
 
-// [[maybe_unused]]: this helper is used by the search budget tests added in a later task;
-// -Wall would otherwise flag it as an unused static function here, and the build is
-// warning-free by policy.
-[[maybe_unused]] static double msSince(std::chrono::steady_clock::time_point t0) {
+// Wall-clock helper for the search budget tests.
+static double msSince(std::chrono::steady_clock::time_point t0) {
     return std::chrono::duration<double, std::milli>(
                std::chrono::steady_clock::now() - t0).count();
 }
@@ -2126,6 +2124,41 @@ static void test_search_topout_semantics() {
     assert(maxRow < tb::VISIBLE_H);
 }
 
+static void test_search_time_budget() {
+    // A deliberately expensive board: ten rows, each missing a different column. Movegen
+    // produces a large candidate set and every child has holes to evaluate.
+    tb::Board b{};
+    for (int y = 0; y < 10; ++y) b.rows[y] = (uint16_t)(tb::FULL_ROW & ~(1u << y));
+    tb::PieceType queue[tb::PREVIEW_LEN] = {
+        tb::PIECE_S, tb::PIECE_Z, tb::PIECE_L, tb::PIECE_J, tb::PIECE_I
+    };
+
+    tb::SearchConfig cfg;                 // depth 5, width 100, budget 5 ms
+    auto t0 = std::chrono::steady_clock::now();
+    tb::SearchResult r = tb::search(b, tb::PIECE_T, tb::PIECE_O, queue,
+                                    tb::PREVIEW_LEN, true, 0, cfg);
+    double ms = msSince(t0);
+    assert(r.valid);
+    // Overrun is bounded by up to 63 more scored children plus one generateMoves call, so a
+    // 5x ceiling is the honest assertion for a test binary. The real p99 check lives in the
+    // CLI acceptance run at -O3.
+    assert(ms < 25.0);
+
+    // A 1 ms budget must cut the search short but still hand back a legal move.
+    cfg.timeBudgetMs = 1.0f;
+    t0 = std::chrono::steady_clock::now();
+    tb::SearchResult r1 = tb::search(b, tb::PIECE_T, tb::PIECE_O, queue,
+                                     tb::PREVIEW_LEN, true, 0, cfg);
+    double ms1 = msSince(t0);
+    assert(r1.valid);
+    assert(ms1 < 10.0);
+    assert(ms1 <= ms + 1.0);   // a smaller budget never costs more time
+    assert(!tb::collides(b, r1.useHold ? tb::PIECE_O : tb::PIECE_T,
+                         r1.placement.rot, r1.placement.x, r1.placement.y));
+    // Not an "ok" line -- RUN() prints that. These are the two numbers worth reading.
+    std::printf("      budget: full=%.2fms cut=%.2fms\n", ms, ms1);
+}
+
 int main() {
     RUN(test_types_constants);
     RUN(test_piece_cells_spawn_shapes);
@@ -2225,6 +2258,7 @@ int main() {
     RUN(test_search_uses_full_depth);
     RUN(test_search_prefers_hold_when_better);
     RUN(test_search_topout_semantics);
+    RUN(test_search_time_budget);
     std::printf("all %d tests passed\n", g_testCount);
     return 0;
 }
