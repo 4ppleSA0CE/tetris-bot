@@ -1777,6 +1777,14 @@ static void test_eval_holes() {
     assert(tb::extractFeatures(fixA()).holes == 0);
 }
 
+static void test_eval_covered_cells() {
+    tb::Features f = tb::extractFeatures(fixB());
+    // column 1: filled cells at y=1 and y=3 both sit above an empty cell -> 2
+    // column 3: filled cells at y=1, y=2, y=3 all sit above the empty y=0 -> 3
+    assert(f.coveredCells == 5);
+    assert(tb::extractFeatures(fixA()).coveredCells == 0);
+}
+
 int main() {
     RUN(test_types_constants);
     RUN(test_piece_cells_spawn_shapes);
@@ -1862,6 +1870,7 @@ int main() {
     RUN(test_eval_ascii_convention);
     RUN(test_eval_heights);
     RUN(test_eval_holes);
+    RUN(test_eval_covered_cells);
     std::printf("all %d tests passed\n", g_testCount);
     return 0;
 }

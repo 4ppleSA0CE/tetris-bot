@@ -29,6 +29,14 @@ Features extractFeatures(const Board& b) {
         }
     }
 
+    for (int c = 0; c < BOARD_W; ++c) {
+        bool sawEmpty = false;
+        for (int y = 0; y < h[c]; ++y) {
+            if (!occ(b, c, y))      sawEmpty = true;
+            else if (sawEmpty)      ++f.coveredCells;
+        }
+    }
+
     return f;
 }
 
