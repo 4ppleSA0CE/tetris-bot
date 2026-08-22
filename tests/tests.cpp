@@ -2307,6 +2307,26 @@ static void test_game_determinism() {
     assert(c.attackSent() != a.attackSent() || c.linesCleared() != a.linesCleared());
 }
 
+static void test_thousand_piece_run() {
+    tb::SearchConfig cfg;          // stock defaults: depth 5, width 100, 5 ms budget
+    tb::Game g(42u, cfg);
+    for (int i = 0; i < 1000; ++i) {
+        g.stepPiece();
+        if (g.toppedOut()) {
+            std::printf("TOPPED OUT after %u pieces\n", g.piecesPlaced());
+            assert(false);
+        }
+    }
+    assert(g.piecesPlaced() == 1000u);
+    // 1000 pieces is 4000 cells, i.e. 400 rows of material. Anything under 150 lines means the
+    // bot is stacking and never cashing in.
+    assert(g.linesCleared() > 150u);
+    assert(g.attackSent() > 0u);
+    // Not an "ok" line -- RUN() prints that. These are the numbers worth reading.
+    std::printf("      1000 pieces: lines=%u attack=%u tspins=%u maxb2b=%u\n",
+                g.linesCleared(), g.attackSent(), g.tSpinCount(), (unsigned)g.maxB2b());
+}
+
 int main() {
     RUN(test_types_constants);
     RUN(test_piece_cells_spawn_shapes);
@@ -2410,6 +2430,7 @@ int main() {
     RUN(test_game_steps);
     RUN(test_game_b2b_survives_non_clearing_pieces);
     RUN(test_game_determinism);
+    RUN(test_thousand_piece_run);
     std::printf("all %d tests passed\n", g_testCount);
     return 0;
 }
