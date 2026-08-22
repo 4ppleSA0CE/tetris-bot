@@ -101,6 +101,60 @@ std::string getPieceCells() {
     return s + "]";
 }
 
+
+// --- handle table ----------------------------------------------------------
+// Monotonic handles: a stale handle is always a clean miss, never a different
+// live bot. unique_ptr: the BotInstance never moves, so botSnapshotPtr() stays
+// valid for its whole life.
+std::unordered_map<int32_t, std::unique_ptr<tb::BotInstance>> g_bots;
+int32_t g_nextHandle = 1;   // 0 is reserved as "invalid"
+
+tb::BotInstance* look(int32_t h) {
+    auto it = g_bots.find(h);
+    return it == g_bots.end() ? nullptr : it->second.get();
+}
+
+int32_t botCreate(int32_t seed, float pps, int32_t searchDepth, int32_t beamWidth) {
+    const int32_t h = g_nextHandle++;
+    g_bots.emplace(h, std::make_unique<tb::BotInstance>(
+        static_cast<uint32_t>(seed), pps, searchDepth, beamWidth));
+    return h;
+}
+
+bool botTick(int32_t h, double nowMs) {
+    if (auto* b = look(h)) { b->tick(nowMs); return true; }
+    return false;
+}
+
+// A wasm linear-memory byte offset. The ADDRESS survives memory growth; the JS
+// VIEW built over it does not. See SnapshotView.sync() in js/layout.ts.
+uintptr_t botSnapshotPtr(int32_t h) {
+    auto* b = look(h);
+    return b ? reinterpret_cast<uintptr_t>(b->snapshotPtr()) : 0;
+}
+
+bool botSetPPS(int32_t h, float pps) {
+    if (auto* b = look(h)) { b->setPPS(pps); return true; }
+    return false;
+}
+
+bool botSetWeight(int32_t h, int32_t index, float value) {
+    if (auto* b = look(h)) { b->setWeight(index, value); return true; }
+    return false;
+}
+
+// seed < 0 means "reuse the seed this instance already has".
+bool botReset(int32_t h, int32_t seed) {
+    if (auto* b = look(h)) {
+        b->reset(seed < 0 ? b->seed() : static_cast<uint32_t>(seed));
+        return true;
+    }
+    return false;
+}
+
+bool    botDestroy(int32_t h) { return g_bots.erase(h) > 0; }
+int32_t botLiveCount()        { return static_cast<int32_t>(g_bots.size()); }
+
 }  // namespace
 
 EMSCRIPTEN_BINDINGS(tetris_bot_layout) {
@@ -109,4 +163,13 @@ EMSCRIPTEN_BINDINGS(tetris_bot_layout) {
     function("getSnapshotAlign",  &getSnapshotAlign);
     function("getWeightsInfo",    &getWeightsInfo);
     function("getPieceCells",     &getPieceCells);
+
+    function("botCreate",      &botCreate);
+    function("botTick",        &botTick);
+    function("botSnapshotPtr", &botSnapshotPtr);
+    function("botSetPPS",      &botSetPPS);
+    function("botSetWeight",   &botSetWeight);
+    function("botReset",       &botReset);
+    function("botDestroy",     &botDestroy);
+    function("botLiveCount",   &botLiveCount);
 }
