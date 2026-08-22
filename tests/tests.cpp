@@ -1500,6 +1500,63 @@ static void test_mg_tspin_double_fixture() {
     assert(mgLinesFor(b, tb::PIECE_T, *pl) == 2);
 }
 
+// --------------------------------------------- movegen: TST and the kick-4 promotion
+
+static void test_mg_tspin_triple_fixture() {
+    const char* rows[] = {
+        "..........",   // y = 5
+        "##........",   // y = 4   the jut at (1,4) is what defeats kick tests 1 and 2
+        "#.........",   // y = 3
+        "#.########",   // y = 2
+        "#..#######",   // y = 1
+        "#.########",   // y = 0
+    };
+    const tb::Board b = tb::boardFromAscii(rows, 6);
+    static tb::MoveList ml;
+    tb::generateMoves(b, tb::PIECE_T, &ml);
+
+    assert(mgCountSpins(ml) >= 1);
+    const tb::Placement* pl = mgFind(ml, 0, 0, tb::ROT_R);
+    assert(pl != nullptr);
+    assert(pl->lastWasRotation);
+    assert(pl->spin != tb::SPIN_NONE);
+    assert(pl->spin == tb::SPIN_FULL);
+    // The ONLY way into this state is the last SRS test. Nothing else reaches it.
+    assert(pl->kickIndex == 4);
+    assert(mgLinesFor(b, tb::PIECE_T, *pl) == 3);
+    // All four corners are filled here, so this fixture would classify as FULL
+    // even without the promotion rule -- it exercises the kick-4 code path, not
+    // the promotion branch. The next test covers the branch.
+    assert(tb::classifyTSpin(b, tb::ROT_R, 0, 0, true, 0) == tb::SPIN_FULL);
+}
+
+static void test_mg_tspin_kick4_promotion_fixture() {
+    const char* rows[] = {
+        "..........",   // y = 5
+        "##........",   // y = 4
+        "#.........",   // y = 3
+        "#.########",   // y = 2
+        "#..#######",   // y = 1
+        "#..#######",   // y = 0   one cell different from the TST fixture
+    };
+    const tb::Board b = tb::boardFromAscii(rows, 6);
+    static tb::MoveList ml;
+    tb::generateMoves(b, tb::PIECE_T, &ml);
+
+    assert(mgCountSpins(ml) >= 1);
+    const tb::Placement* pl = mgFind(ml, 0, 0, tb::ROT_R);
+    assert(pl != nullptr);
+    assert(pl->lastWasRotation);
+    assert(pl->kickIndex == 4);
+    assert(mgLinesFor(b, tb::PIECE_T, *pl) == 2);
+    // Corner test alone: 3 corners, front == 1 -> Mini.
+    assert(tb::classifyTSpin(b, tb::ROT_R, 0, 0, true, 0) == tb::SPIN_MINI);
+    // With the real kick index it is promoted to a proper T-spin double.
+    // That is a 400-point Mini becoming a 1200-point spin, which is the whole
+    // reason the STSD is worth setting up.
+    assert(pl->spin == tb::SPIN_FULL);
+}
+
 int main() {
     RUN(test_types_constants);
     RUN(test_piece_cells_spawn_shapes);
@@ -1576,6 +1633,8 @@ int main() {
     RUN(test_mg_rotation_last_path_wins_tie_break);
     RUN(test_mg_tspin_single_fixture);
     RUN(test_mg_tspin_double_fixture);
+    RUN(test_mg_tspin_triple_fixture);
+    RUN(test_mg_tspin_kick4_promotion_fixture);
     std::printf("all %d tests passed\n", g_testCount);
     return 0;
 }
