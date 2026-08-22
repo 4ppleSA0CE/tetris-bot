@@ -1829,6 +1829,17 @@ static void test_eval_column_transitions() {
     assert(tb::extractFeatures(fixB()).columnTransitions == 12);
 }
 
+static void test_eval_well_depth() {
+    // FIX_A is a staircase: every column's neighbour on one side is lower, so no run starts.
+    assert(tb::extractFeatures(fixA()).wellDepth == 0);
+    // FIX_WELL: column 9 is empty for y=0..13 with column 8 filled and the right wall.
+    // d == 14 -> 14*15/2 == 105. No other column starts a run.
+    tb::Features fw = tb::extractFeatures(fixWell());
+    assert(fw.wellDepth == 105);
+    assert(fw.bumpiness == 14);
+    assert(fw.holes == 0);
+}
+
 int main() {
     RUN(test_types_constants);
     RUN(test_piece_cells_spawn_shapes);
@@ -1919,6 +1930,7 @@ int main() {
     RUN(test_eval_height_penalty);
     RUN(test_eval_row_transitions);
     RUN(test_eval_column_transitions);
+    RUN(test_eval_well_depth);
     std::printf("all %d tests passed\n", g_testCount);
     return 0;
 }

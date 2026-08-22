@@ -67,6 +67,15 @@ Features extractFeatures(const Board& b) {
         }
     }
 
+    for (int c = 0; c < BOARD_W; ++c) {
+        int d = 0;
+        for (int y = h[c]; y < BOARD_H; ++y) {
+            if (!occ(b, c - 1, y) || !occ(b, c + 1, y)) break;
+            ++d;
+        }
+        f.wellDepth += d * (d + 1) / 2;
+    }
+
     return f;
 }
 
