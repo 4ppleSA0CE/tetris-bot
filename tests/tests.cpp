@@ -1063,6 +1063,11 @@ static void test_mg_classify_three_corner_gate() {
     assert(tb::classifyTSpin(b, tb::ROT_0, 3, 0, true, 0) == tb::SPIN_NONE);
     // Same two cells are ROT_2's FRONT pair. Still nothing: the gate is first.
     assert(tb::classifyTSpin(b, tb::ROT_2, 3, 0, true, 0) == tb::SPIN_NONE);
+    // The gate runs BEFORE the kick-4 promotion. Hoisting the promotion above
+    // it is a one-line edit that every other assert in this file tolerates, so
+    // pin the ordering here: two corners plus the promoting kick index is still
+    // nothing at all.
+    assert(tb::classifyTSpin(b, tb::ROT_0, 3, 0, true, 4) == tb::SPIN_NONE);
     // Zero corners on an empty board.
     const tb::Board empty{};
     assert(tb::classifyTSpin(empty, tb::ROT_0, 4, 0, true, 0) == tb::SPIN_NONE);
@@ -1135,6 +1140,28 @@ static void test_mg_classify_mini_vs_full_same_centre() {
     // its board has front == 1, so a kickIndex of 4 there exercises the
     // promotion branch rather than this one.)
     assert(tb::classifyTSpin(b, tb::ROT_2, 5, 0, true, 4) == tb::SPIN_FULL);
+    // ROT_L front pair = (5,2) and (5,0) -> front == 1 -> MINI. Without this the
+    // whole ROT_L row of the FRONT table is unexercised. Kills the three wrong
+    // pairs that read the +1 column: {1,2}, {1,3} and {2,3}.
+    assert(tb::classifyTSpin(b, tb::ROT_L, 5, 0, true, 0) == tb::SPIN_MINI);
+}
+
+// The other half of the ROT_L check. With exactly three corners filled the front
+// pair has one empty member, so a single board can never separate the correct
+// pair from all five wrong ones -- whichever corner is empty, some wrong pair
+// contains it and scores the same. This board empties the corner the previous
+// one fills, and kills the remaining two: {0,1} and {0,3}.
+static void test_mg_classify_rot_l_front_pair() {
+    const char* rows[] = {
+        "...#.#....",   // y = 2
+        "..........",   // y = 1
+        ".....#....",   // y = 0
+    };
+    const tb::Board b = tb::boardFromAscii(rows, 3);
+    // Origin (3, 0) puts the centre at (4, 1). Corners (3,2)'#' (5,2)'#'
+    // (3,0)'.' (5,0)'#' -> occupied == 3.
+    // ROT_L front pair = (3,2) and (3,0) -> front == 1 -> MINI.
+    assert(tb::classifyTSpin(b, tb::ROT_L, 3, 0, true, 0) == tb::SPIN_MINI);
 }
 
 // The promotion branch, isolated: same board, same position, only kickIndex
@@ -1425,6 +1452,7 @@ int main() {
     RUN(test_mg_classify_requires_rotation_last);
     RUN(test_mg_classify_counts_walls_and_floor);
     RUN(test_mg_classify_mini_vs_full_same_centre);
+    RUN(test_mg_classify_rot_l_front_pair);
     RUN(test_mg_classify_kick_index_four_promotes);
     RUN(test_mg_empty_board_placement_counts);
     RUN(test_mg_every_placement_is_legal_and_grounded);
