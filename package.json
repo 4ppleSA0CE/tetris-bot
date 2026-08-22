@@ -1,0 +1,28 @@
+{
+  "name": "tetris-bot",
+  "version": "1.0.0",
+  "description": "A T-spin-capable Tetris bot: C++ core compiled to WebAssembly, with a monochrome canvas renderer.",
+  "license": "MIT",
+  "type": "module",
+  "sideEffects": false,
+  "files": ["dist", "js", "renderers", "README.md"],
+  "exports": {
+    ".": { "types": "./js/index.d.ts", "default": "./js/index.js" },
+    "./renderer": {
+      "types": "./renderers/canvas-mono.d.ts",
+      "default": "./renderers/canvas-mono.js"
+    }
+  },
+  "scripts": {
+    "build:wasm": "./build.sh",
+    "build:js": "tsc -p tsconfig.json",
+    "build": "npm run build:wasm && npm run build:js",
+    "demo": "vite --config demo/vite.config.ts",
+    "demo:build": "vite build --config demo/vite.config.ts",
+    "test:web": "node tests/wasm_layout.mjs && node tests/layout_math.mjs && node tests/wasm_views.mjs && node tests/wasm_leak.mjs && node tests/host_env.mjs && node tests/visibility.mjs && node tests/renderer_board.mjs && node tests/renderer_anim.mjs && node tests/renderer_callouts.mjs && node tests/renderer_discipline.mjs && node tests/animation.mjs && node tests/callout_e2e.mjs && node tests/embed_headless.mjs && node tests/dist_size.mjs"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.0",
+    "vite": "^7.3.0"
+  }
+}
