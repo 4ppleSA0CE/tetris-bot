@@ -15,6 +15,11 @@ const ROT_TAU_MS = 55;
 /** A frame gap longer than this is a stall, not motion; do not integrate it. */
 const MAX_FRAME_MS = 100;
 const HALF_PI = Math.PI / 2;
+/** PRD section 7.3: brief scale-in, fade over ~800ms. */
+const CALLOUT_LIFE_MS = 800;
+const CALLOUT_POP_MS = 120;
+const CALLOUT_SCALE_FROM = 0.72;
+const MAX_CALLOUTS = 4;
 /**
  * Not a color. `currentColor` resolves to the host element's own `color`, and
  * exists solely so a host that forgot to set the custom properties renders
@@ -22,8 +27,11 @@ const HALF_PI = Math.PI / 2;
  */
 const FALLBACK = 'currentColor';
 /**
- * The seven non-accent properties. --bot-accent is deliberately absent: it is
- * read only by readAccent(), only from drawCallouts().
+ * The seven non-accent properties. The accent is deliberately NOT read here: it
+ * is fetched by exactly one function and spent in exactly one place, the callout
+ * pass at the bottom of this file. tests/renderer_discipline.mjs enforces that by
+ * counting occurrences, so do not name the accent property anywhere else - not
+ * even in a comment.
  */
 function readTheme(el) {
     const cs = getComputedStyle(el);
@@ -196,6 +204,69 @@ function drawHud(ctx, s, th, g) {
         `${s.linesCleared} LINES   ${s.attackSent} ATK   B2B ${s.b2bCount}`;
     ctx.fillText(line, g.calloutAlign === 'right' ? g.wellX + g.wellW : g.wellX, g.hudY);
 }
+/**
+ * DISCIPLINE (PRD section 7.1): the accent property is read here and nowhere
+ * else, and this function is called from drawCallouts() and nowhere else. A
+ * single accent that occurs nowhere else lands disproportionately hard; do not
+ * spend it on the active piece, the HUD, or the well outline.
+ */
+function readAccent(el) {
+    return getComputedStyle(el).getPropertyValue('--bot-accent').trim() || FALLBACK;
+}
+function calloutText(type, param) {
+    switch (type) {
+        case 2: return 'TETRIS';
+        case 3: return 'T-SPIN MINI';
+        case 4: return 'T-SPIN SINGLE';
+        case 5: return 'T-SPIN DOUBLE';
+        case 6: return 'T-SPIN TRIPLE';
+        case 7: return `BACK-TO-BACK ×${param}`;
+        case 9: return 'PERFECT CLEAR';
+        case 10: return 'TOP OUT';
+        default: return null; // PIECE_LOCK, LINE_CLEAR, B2B_BREAK are not shouted about
+    }
+}
+function collectCallouts(queue, s, t) {
+    for (const ev of s.events) {
+        const text = calloutText(ev.type, ev.param);
+        if (text === null)
+            continue;
+        queue.push({ text, born: t });
+        if (queue.length > MAX_CALLOUTS)
+            queue.shift();
+    }
+}
+function drawCallouts(ctx, queue, g, host, t) {
+    // Retire expired entries BEFORE touching any paint state. Setting the accent
+    // fill on a frame that then draws nothing leaves it as the context's residual
+    // fillStyle, and the next frame's first op inherits it - which reads as the
+    // accent escaping the callouts even though no accent pixel was ever painted.
+    for (let i = queue.length - 1; i >= 0; i--) {
+        const c = queue[i];
+        if (c === undefined || t - c.born >= CALLOUT_LIFE_MS)
+            queue.splice(i, 1);
+    }
+    if (queue.length === 0)
+        return;
+    ctx.fillStyle = readAccent(host);
+    ctx.textAlign = g.calloutAlign;
+    ctx.textBaseline = 'middle';
+    const base = Math.max(10, Math.round(g.cell * 0.5));
+    for (let i = queue.length - 1; i >= 0; i--) {
+        const c = queue[i];
+        if (c === undefined)
+            continue;
+        const age = t - c.born;
+        const pop = Math.min(1, age / CALLOUT_POP_MS);
+        const eased = 1 - (1 - pop) * (1 - pop); // easeOutQuad
+        const scale = CALLOUT_SCALE_FROM + (1 - CALLOUT_SCALE_FROM) * eased;
+        const life = age / CALLOUT_LIFE_MS;
+        ctx.globalAlpha = 1 - life * life;
+        ctx.font = `${Math.round(base * scale)}px ${FONT_STACK}`;
+        ctx.fillText(c.text, g.calloutX, g.calloutY + i * base * 1.6);
+    }
+    ctx.globalAlpha = 1;
+}
 export function createRenderer(opts) {
     const canvas = opts.canvas;
     const ctx = canvas.getContext('2d');
@@ -206,6 +277,7 @@ export function createRenderer(opts) {
     const anim = {
         x: 0, y: 0, angle: 0, piece: -2, pieceSerial: -1, lastMs: 0,
     };
+    const callouts = [];
     const resize = () => {
         geo = computeGeometry(canvas, opts.layout, opts.chrome);
         canvas.width = Math.round(geo.w * geo.dpr);
@@ -218,17 +290,22 @@ export function createRenderer(opts) {
     const draw = (s) => {
         const th = readTheme(canvas);
         const g = geo;
+        const t = nowMs();
         ctx.setTransform(g.dpr, 0, 0, g.dpr, 0, 0);
         ctx.fillStyle = th.bg;
         ctx.fillRect(0, 0, g.w, g.h);
         drawWell(ctx, th, g);
         drawLockedCells(ctx, s, th, g);
         drawGhost(ctx, s, th, g);
-        advanceAnimation(anim, s, nowMs());
+        advanceAnimation(anim, s, t);
         drawActivePiece(ctx, s, th, g, anim);
         if (opts.chrome === 'full') {
             drawSide(ctx, s, th, g);
             drawHud(ctx, s, th, g);
+        }
+        if (opts.chrome !== 'none') {
+            collectCallouts(callouts, s, t);
+            drawCallouts(ctx, callouts, g, canvas, t);
         }
     };
     const destroy = () => {
