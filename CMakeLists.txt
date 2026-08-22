@@ -18,6 +18,7 @@ set(TB_CORE_SOURCES
     core/srs.cpp
     core/rng.cpp
     core/attack.cpp
+    core/movegen.cpp
 )
 
 # Shared include dir and warning flags. Every target links this, so a new target

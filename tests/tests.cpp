@@ -1032,6 +1032,134 @@ static void test_mg_rotation_helpers() {
     assert(!tb::isRotateAction(tb::ACT_NONE));
 }
 
+// -------------------------------------------------------- movegen: T-spin rules
+
+static void test_mg_cell_occupied_semantics() {
+    tb::Board b{};
+    b.rows[3] = static_cast<uint16_t>(1u << 7);
+    assert(tb::mgCellOccupied(b, 7, 3));            // a filled cell
+    assert(!tb::mgCellOccupied(b, 6, 3));           // an empty cell
+    assert(tb::mgCellOccupied(b, -1, 5));           // left wall
+    assert(tb::mgCellOccupied(b, -100, 5));         // far left wall
+    assert(tb::mgCellOccupied(b, 10, 5));           // right wall
+    assert(tb::mgCellOccupied(b, 999, 5));          // far right wall
+    assert(tb::mgCellOccupied(b, 4, -1));           // floor
+    assert(tb::mgCellOccupied(b, 4, -50));          // below the floor
+    assert(!tb::mgCellOccupied(b, 4, tb::BOARD_H)); // above the well is EMPTY
+    assert(!tb::mgCellOccupied(b, 4, 5000));        // still empty
+}
+
+// The 3-corner gate. Two corners is NOT a mini, it is nothing at all -- and it
+// stays nothing even when both of them happen to be the front pair.
+static void test_mg_classify_three_corner_gate() {
+    const char* rows[] = {
+        "..........",   // y = 2
+        "..........",   // y = 1
+        "...#.#....",   // y = 0   filled at x = 3 and x = 5
+    };
+    const tb::Board b = tb::boardFromAscii(rows, 3);
+    // Origin (3, 0) puts the T's centre at (4, 1). Corners (3,2) (5,2) (3,0)
+    // (5,0): only the bottom two are filled -> occupied == 2.
+    assert(tb::classifyTSpin(b, tb::ROT_0, 3, 0, true, 0) == tb::SPIN_NONE);
+    // Same two cells are ROT_2's FRONT pair. Still nothing: the gate is first.
+    assert(tb::classifyTSpin(b, tb::ROT_2, 3, 0, true, 0) == tb::SPIN_NONE);
+    // Zero corners on an empty board.
+    const tb::Board empty{};
+    assert(tb::classifyTSpin(empty, tb::ROT_0, 4, 0, true, 0) == tb::SPIN_NONE);
+}
+
+static void test_mg_classify_requires_rotation_last() {
+    const char* rows[] = {
+        "..........",   // y = 3
+        "...#......",   // y = 2
+        "###...####",   // y = 1
+        ".###.#####",   // y = 0
+    };
+    const tb::Board b = tb::boardFromAscii(rows, 4);
+    // Origin (3, 0) ROT_2 is the T-spin single. Rotation-last -> full spin.
+    assert(tb::classifyTSpin(b, tb::ROT_2, 3, 0, true, 0) == tb::SPIN_FULL);
+    // Identical geometry, but the piece slid or fell into place -> no spin.
+    assert(tb::classifyTSpin(b, tb::ROT_2, 3, 0, false, 255) == tb::SPIN_NONE);
+}
+
+// Walls and the floor count as occupied. Both fixtures sit at EXACTLY three
+// corners, one supplied by a wall and one by the floor, so if either stopped
+// counting the hard gate would drop that case to SPIN_NONE. Both positions are
+// collision-free: this function is only ever called on legal placements, and a
+// fixture the piece cannot physically occupy would break the moment someone
+// adds the precondition assert this codebase adds everywhere else.
+static void test_mg_classify_counts_walls_and_floor() {
+    // Left wall. ROT_R origin (-1, 0) puts the centre at (0, 1). Corners:
+    // (-1,2) wall, (1,2) empty, (-1,0) wall, (1,0) filled -> occupied == 3.
+    // ROT_R's front pair is (1,2) and (1,0) -> front == 1 -> MINI.
+    const char* wallRows[] = {
+        "..........",   // y = 2
+        "..........",   // y = 1
+        ".#........",   // y = 0
+    };
+    const tb::Board wall = tb::boardFromAscii(wallRows, 3);
+    assert(tb::classifyTSpin(wall, tb::ROT_R, -1, 0, true, 0) == tb::SPIN_MINI);
+
+    // Floor. ROT_0 origin (0, -1) puts the centre at (1, 0) -- ROT_0 is the one
+    // rotation with no bottom-row cell, so y = -1 is legal. Corners: (0,1)
+    // filled, (2,1) empty, (0,-1) floor, (2,-1) floor -> occupied == 3.
+    // ROT_0's front pair is (0,1) and (2,1) -> front == 1 -> MINI.
+    const char* floorRows[] = {
+        "..........",   // y = 2
+        "#.........",   // y = 1
+        "..........",   // y = 0
+    };
+    const tb::Board floorBoard = tb::boardFromAscii(floorRows, 3);
+    assert(tb::classifyTSpin(floorBoard, tb::ROT_0, 0, -1, true, 0) == tb::SPIN_MINI);
+}
+
+// One board, one centre, two rotations, two different answers. If the
+// front-corner table is transposed or off by one these cannot both pass.
+static void test_mg_classify_mini_vs_full_same_centre() {
+    const char* rows[] = {
+        "..........",   // y = 3
+        ".......#..",   // y = 2
+        "#####...##",   // y = 1
+        ".#####.###",   // y = 0
+    };
+    const tb::Board b = tb::boardFromAscii(rows, 4);
+    // Origin (5, 0) puts the centre at (6, 1). Corners (5,2)'.' (7,2)'#'
+    // (5,0)'#' (7,0)'#' -> occupied == 3.
+    // ROT_0 front pair = (5,2) and (7,2) -> front == 1 -> MINI.
+    assert(tb::classifyTSpin(b, tb::ROT_0, 5, 0, true, 0) == tb::SPIN_MINI);
+    // ROT_2 front pair = (5,0) and (7,0) -> front == 2 -> FULL.
+    assert(tb::classifyTSpin(b, tb::ROT_2, 5, 0, true, 0) == tb::SPIN_FULL);
+    // Promotion is one-directional. This position is already FULL on its own
+    // corners; arriving by the fifth kick must leave it FULL, not bump it to
+    // some tier above. (The kick-4 test cannot check this -- every position on
+    // its board has front == 1, so a kickIndex of 4 there exercises the
+    // promotion branch rather than this one.)
+    assert(tb::classifyTSpin(b, tb::ROT_2, 5, 0, true, 4) == tb::SPIN_FULL);
+}
+
+// The promotion branch, isolated: same board, same position, only kickIndex
+// differs. This is the STSD case and it is where the bug will be if there is one.
+static void test_mg_classify_kick_index_four_promotes() {
+    const char* rows[] = {
+        "..........",   // y = 5
+        "##........",   // y = 4
+        "#.........",   // y = 3
+        "#.########",   // y = 2
+        "#..#######",   // y = 1
+        "#..#######",   // y = 0
+    };
+    const tb::Board b = tb::boardFromAscii(rows, 6);
+    // Origin (0, 0) puts the centre at (1, 1). Corners (0,2)'#' (2,2)'#'
+    // (0,0)'#' (2,0)'.' -> occupied == 3.
+    // ROT_R front pair = (2,2)'#' and (2,0)'.' -> front == 1.
+    assert(tb::classifyTSpin(b, tb::ROT_R, 0, 0, true, 0) == tb::SPIN_MINI);
+    assert(tb::classifyTSpin(b, tb::ROT_R, 0, 0, true, 3) == tb::SPIN_MINI);
+    assert(tb::classifyTSpin(b, tb::ROT_R, 0, 0, true, 4) == tb::SPIN_FULL);
+    // 255 means the last rotation was a 180. The five-test index does not
+    // apply, so it must never promote.
+    assert(tb::classifyTSpin(b, tb::ROT_R, 0, 0, true, 255) == tb::SPIN_MINI);
+}
+
 int main() {
     RUN(test_types_constants);
     RUN(test_piece_cells_spawn_shapes);
@@ -1094,6 +1222,12 @@ int main() {
     RUN(test_mg_state_index_roundtrips);
     RUN(test_mg_state_bounds_reject_out_of_window);
     RUN(test_mg_rotation_helpers);
+    RUN(test_mg_cell_occupied_semantics);
+    RUN(test_mg_classify_three_corner_gate);
+    RUN(test_mg_classify_requires_rotation_last);
+    RUN(test_mg_classify_counts_walls_and_floor);
+    RUN(test_mg_classify_mini_vs_full_same_centre);
+    RUN(test_mg_classify_kick_index_four_promotes);
     std::printf("all %d tests passed\n", g_testCount);
     return 0;
 }
