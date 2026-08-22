@@ -37,6 +37,11 @@ Features extractFeatures(const Board& b) {
         }
     }
 
+    for (int c = 0; c + 1 < BOARD_W; ++c) {
+        int d = h[c] - h[c + 1];
+        f.bumpiness += (d < 0) ? -d : d;
+    }
+
     return f;
 }
 

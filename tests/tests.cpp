@@ -1785,6 +1785,13 @@ static void test_eval_covered_cells() {
     assert(tb::extractFeatures(fixA()).coveredCells == 0);
 }
 
+static void test_eval_bumpiness() {
+    // FIX_A heights 5,4,3,2,1,0,0,0,0,0 -> 1+1+1+1+1+0+0+0+0 == 5
+    assert(tb::extractFeatures(fixA()).bumpiness == 5);
+    // FIX_B heights 4,4,4,4,0,0,0,0,0,0 -> 0+0+0+4+0+0+0+0+0 == 4
+    assert(tb::extractFeatures(fixB()).bumpiness == 4);
+}
+
 int main() {
     RUN(test_types_constants);
     RUN(test_piece_cells_spawn_shapes);
@@ -1871,6 +1878,7 @@ int main() {
     RUN(test_eval_heights);
     RUN(test_eval_holes);
     RUN(test_eval_covered_cells);
+    RUN(test_eval_bumpiness);
     std::printf("all %d tests passed\n", g_testCount);
     return 0;
 }
