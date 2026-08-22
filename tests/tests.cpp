@@ -1557,6 +1557,63 @@ static void test_mg_tspin_kick4_promotion_fixture() {
     assert(pl->spin == tb::SPIN_FULL);
 }
 
+// ------------------------------------- movegen: mini fixture and negative control
+
+static void test_mg_tspin_mini_fixture() {
+    const char* rows[] = {
+        "..........",   // y = 3
+        ".......#..",   // y = 2   the overhang at (7,2) blocks the ROT_R descent
+        "#####...##",   // y = 1   gap at x = 5,6,7
+        ".#####.###",   // y = 0   gaps at x = 0 and x = 6
+    };
+    const tb::Board b = tb::boardFromAscii(rows, 4);
+    static tb::MoveList ml;
+    tb::generateMoves(b, tb::PIECE_T, &ml);
+
+    // The T falls in ROT_L down the column and rotates CW into ROT_0.
+    const tb::Placement* mini = mgFind(ml, 5, 0, tb::ROT_0);
+    assert(mini != nullptr);
+    assert(mini->lastWasRotation);
+    assert(mini->kickIndex == 0);
+    assert(mini->spin == tb::SPIN_MINI);
+    assert(mgLinesFor(b, tb::PIECE_T, *mini) == 1);
+
+    // Same board, same centre, rotate CCW instead: front corners become the two
+    // filled ones and it is a full T-spin single. One board, two answers.
+    const tb::Placement* full = mgFind(ml, 5, 0, tb::ROT_2);
+    assert(full != nullptr);
+    assert(full->lastWasRotation);
+    assert(full->kickIndex == 0);
+    assert(full->spin == tb::SPIN_FULL);
+    assert(mgLinesFor(b, tb::PIECE_T, *full) == 1);
+
+    assert(mgCountSpins(ml) >= 2);
+}
+
+static void test_mg_negative_control_no_spins_anywhere() {
+    const char* rows[] = {
+        "..........",   // y = 2
+        "##......##",   // y = 1
+        "####..####",   // y = 0
+    };
+    const tb::Board b = tb::boardFromAscii(rows, 3);
+    static tb::MoveList ml;
+    tb::generateMoves(b, tb::PIECE_T, &ml);
+
+    assert(ml.count > 0);
+    for (int i = 0; i < ml.count; ++i) {
+        const tb::Placement& pl = ml.items[i];
+        if (pl.spin != tb::SPIN_NONE)
+            std::printf("false spin: x=%d y=%d rot=%d spin=%d kick=%u\n",
+                        pl.x, pl.y, static_cast<int>(pl.rot),
+                        static_cast<int>(pl.spin),
+                        static_cast<unsigned>(pl.kickIndex));
+        assert(pl.spin == tb::SPIN_NONE);
+        assert(mgLinesFor(b, tb::PIECE_T, pl) == 0);
+    }
+    assert(mgCountSpins(ml) == 0);
+}
+
 int main() {
     RUN(test_types_constants);
     RUN(test_piece_cells_spawn_shapes);
@@ -1635,6 +1692,8 @@ int main() {
     RUN(test_mg_tspin_double_fixture);
     RUN(test_mg_tspin_triple_fixture);
     RUN(test_mg_tspin_kick4_promotion_fixture);
+    RUN(test_mg_tspin_mini_fixture);
+    RUN(test_mg_negative_control_no_spins_anywhere);
     std::printf("all %d tests passed\n", g_testCount);
     return 0;
 }
