@@ -1614,6 +1614,104 @@ static void test_mg_negative_control_no_spins_anywhere() {
     assert(mgCountSpins(ml) == 0);
 }
 
+// ------------------------------------------------ movegen: dedup and invariants
+
+static void test_mg_no_duplicate_placement_keys() {
+    const char* midRows[] = {
+        "..........",
+        "..........",
+        "#...####..",
+        "##..#####.",
+        "###.#####.",
+        "####.####.",
+        "#####.####",
+        "######.###",
+        "#######.##",
+        "########.#",
+    };
+    const char* tstRows[] = {
+        "..........",
+        "##........",
+        "#.........",
+        "#.########",
+        "#..#######",
+        "#.########",
+    };
+    const tb::Board boards[3] = {
+        tb::Board{},
+        tb::boardFromAscii(midRows, 10),
+        tb::boardFromAscii(tstRows, 6),
+    };
+    static bool seen[tb::MG_STATES];
+    static tb::MoveList ml;
+    for (int bi = 0; bi < 3; ++bi) {
+        for (int pi = 0; pi < tb::NUM_PIECES; ++pi) {
+            const tb::PieceType p = static_cast<tb::PieceType>(pi);
+            tb::generateMoves(boards[bi], p, &ml);
+            for (int i = 0; i < tb::MG_STATES; ++i) seen[i] = false;
+            for (int i = 0; i < ml.count; ++i) {
+                const tb::Placement& pl = ml.items[i];
+                assert(tb::mgInStateBounds(pl.x, pl.y));
+                const int key = tb::mgStateIndex(pl.x, pl.y, pl.rot);
+                if (seen[key])
+                    std::printf("duplicate key: board %d piece %d x=%d y=%d rot=%d\n",
+                                bi, pi, pl.x, pl.y, static_cast<int>(pl.rot));
+                assert(!seen[key]);
+                seen[key] = true;
+            }
+        }
+    }
+}
+
+static void test_mg_placement_fields_are_consistent() {
+    const char* midRows[] = {
+        "..........",
+        "..........",
+        "#...####..",
+        "##..#####.",
+        "###.#####.",
+        "####.####.",
+        "#####.####",
+        "######.###",
+        "#######.##",
+        "########.#",
+    };
+    const tb::Board boards[2] = { tb::Board{}, tb::boardFromAscii(midRows, 10) };
+    static tb::MoveList ml;
+    for (int bi = 0; bi < 2; ++bi) {
+        for (int pi = 0; pi < tb::NUM_PIECES; ++pi) {
+            const tb::PieceType p = static_cast<tb::PieceType>(pi);
+            tb::generateMoves(boards[bi], p, &ml);
+            assert(ml.count > 0 && ml.count <= tb::MAX_PLACEMENTS);
+            for (int i = 0; i < ml.count; ++i) {
+                const tb::Placement& pl = ml.items[i];
+                // kickIndex is a five-test SRS index, or the 255 sentinel.
+                assert(pl.kickIndex <= 4 || pl.kickIndex == 255);
+                // A non-255 index means the final action WAS a 90-degree rotation.
+                if (pl.kickIndex != 255) assert(pl.lastWasRotation);
+                // A non-rotation arrival never carries an index.
+                if (!pl.lastWasRotation) assert(pl.kickIndex == 255);
+                // A rotation-last path really does end in a rotation.
+                if (pl.lastWasRotation) {
+                    assert(pl.pathLen > 0);
+                    assert(tb::isRotateAction(pl.path[pl.pathLen - 1]));
+                }
+                // Only T is ever a spin.
+                if (pl.spin != tb::SPIN_NONE) {
+                    assert(p == tb::PIECE_T);
+                    assert(pl.lastWasRotation);
+                }
+                // An empty path means the piece never moved from spawn.
+                if (pl.pathLen == 0) {
+                    assert(pl.x == tb::SPAWN_X && pl.y == tb::SPAWN_Y &&
+                           pl.rot == tb::ROT_0);
+                }
+                assert(pl.pathLen <= tb::MAX_PATH_LEN);
+            }
+        }
+    }
+}
+
 int main() {
     RUN(test_types_constants);
     RUN(test_piece_cells_spawn_shapes);
@@ -1694,6 +1792,8 @@ int main() {
     RUN(test_mg_tspin_kick4_promotion_fixture);
     RUN(test_mg_tspin_mini_fixture);
     RUN(test_mg_negative_control_no_spins_anywhere);
+    RUN(test_mg_no_duplicate_placement_keys);
+    RUN(test_mg_placement_fields_are_consistent);
     std::printf("all %d tests passed\n", g_testCount);
     return 0;
 }
