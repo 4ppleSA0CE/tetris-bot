@@ -1,0 +1,5 @@
+# dist/bot.js is a SINGLE_FILE Emscripten bundle: the wasm is embedded as raw
+# code points U+0000-U+00FF, so the file contains literal NUL bytes and other
+# control characters. Never let git, an editor, or a formatter touch its bytes.
+dist/bot.js -text -diff
+dist/bot.d.ts text eol=lf
