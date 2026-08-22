@@ -2050,6 +2050,45 @@ static void test_search_uses_full_depth() {
     assert(r5.score < r1.score);
 }
 
+static void test_search_prefers_hold_when_better() {
+    // Rows 0..3 are filled across columns 0..8 with column 9 open: a 4-deep tetris well.
+    // The held I clears four lines. The current S clears nothing and can only make the
+    // board worse. The search must come back with useHold == true.
+    tb::Board b{};
+    for (int y = 0; y < 4; ++y) b.rows[y] = (uint16_t)(tb::FULL_ROW & ~(1u << 9));
+
+    tb::PieceType queue[tb::PREVIEW_LEN] = {
+        tb::PIECE_O, tb::PIECE_L, tb::PIECE_J, tb::PIECE_Z, tb::PIECE_O
+    };
+    tb::SearchConfig cfg;
+    cfg.timeBudgetMs = 1e9f;   // no wall-clock cut-off, so this test is deterministic
+
+    tb::SearchResult r = tb::search(b, tb::PIECE_S, tb::PIECE_I, queue,
+                                    tb::PREVIEW_LEN, false, 0, cfg);
+    assert(r.valid);
+    assert(r.useHold);
+    // and the move it picked really is the I filling the well: locking it clears four rows.
+    // (Asserted through the board, not through placement.x, because the piece origin offset
+    // for a vertical I is plan 1's business and this test must not encode it.)
+    assert(!tb::collides(b, tb::PIECE_I, r.placement.rot, r.placement.x, r.placement.y));
+    tb::Board after = b;
+    tb::lockPiece(after, tb::PIECE_I, r.placement.rot, r.placement.x, r.placement.y);
+    assert(tb::clearLines(after) == 4);
+
+    // With hold empty, the same win is available one piece deeper: the search should take
+    // the queue's first piece instead of the S and bank the S in hold.
+    tb::PieceType queue2[tb::PREVIEW_LEN] = {
+        tb::PIECE_I, tb::PIECE_O, tb::PIECE_L, tb::PIECE_J, tb::PIECE_Z
+    };
+    tb::SearchResult r2 = tb::search(b, tb::PIECE_S, tb::PIECE_NONE, queue2,
+                                     tb::PREVIEW_LEN, false, 0, cfg);
+    assert(r2.valid);
+    assert(r2.useHold);
+    tb::Board after2 = b;
+    tb::lockPiece(after2, tb::PIECE_I, r2.placement.rot, r2.placement.x, r2.placement.y);
+    assert(tb::clearLines(after2) == 4);
+}
+
 int main() {
     RUN(test_types_constants);
     RUN(test_piece_cells_spawn_shapes);
@@ -2147,6 +2186,7 @@ int main() {
     RUN(test_search_empty_board);
     RUN(test_search_is_anytime);
     RUN(test_search_uses_full_depth);
+    RUN(test_search_prefers_hold_when_better);
     std::printf("all %d tests passed\n", g_testCount);
     return 0;
 }

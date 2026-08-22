@@ -116,76 +116,96 @@ SearchResult search(const Board& b, PieceType current, PieceType hold,
 
         for (int i = 0; i < curCount && !outOfTime; ++i) {
             const Node& parent = cur[i];
-            if (parent.queueIdx >= seqLen) continue;   // out of preview, cannot expand
 
-            const PieceType piece       = seq[parent.queueIdx];
-            const PieceType newHold     = parent.hold;
-            const int       newQueueIdx = parent.queueIdx + 1;
+            for (int branch = 0; branch < 2 && !outOfTime; ++branch) {
+                PieceType piece;
+                PieceType newHold;
+                int       newQueueIdx;
 
-            generateMoves(parent.board, piece, &S.moves);
-
-            for (int m = 0; m < S.moves.count; ++m) {
-                const Placement& pl = S.moves.items[m];
-
-                Node child;
-                child.board = parent.board;
-                lockPiece(child.board, piece, pl.rot, pl.x, pl.y);
-                const int lines = clearLines(child.board);
-
-                ClearInfo ci;
-                ci.lines        = (uint8_t)lines;
-                ci.spin         = pl.spin;
-                ci.perfectClear = (lines > 0) && isEmpty(child.board);
-                const int atk = computeAttack(ci, /*b2bActive=*/parent.b2b,
-                                                  /*comboCount=*/parent.combo);
-
-                child.hold        = newHold;
-                child.queueIdx    = (int8_t)newQueueIdx;
-                child.b2b         = (lines > 0) ? b2bMaintaining(ci) : parent.b2b;
-                child.combo       = (lines > 0)
-                                      ? (uint8_t)(parent.combo < 255 ? parent.combo + 1 : 255)
-                                      : (uint8_t)0;
-                child.attackScore = parent.attackScore
-                                  + cfg.weights.attackDealt * (float)atk * discount;
-                child.score       = child.attackScore
-                                  + evaluate(child.board, cfg.weights, child.b2b);
-
-                if (d == 0) {
-                    if (rootCount >= (int)(sizeof(S.roots) / sizeof(S.roots[0]))) continue;
-                    S.roots[rootCount].placement = pl;
-                    S.roots[rootCount].useHold   = false;
-                    child.rootIdx = (int16_t)rootCount;
-                    ++rootCount;
+                if (branch == 0) {
+                    if (parent.queueIdx >= seqLen) continue;
+                    piece       = seq[parent.queueIdx];
+                    newHold     = parent.hold;
+                    newQueueIdx = parent.queueIdx + 1;
+                } else if (parent.hold == PIECE_NONE) {
+                    if (parent.queueIdx + 1 >= seqLen) continue;
+                    piece       = seq[parent.queueIdx + 1];
+                    newHold     = seq[parent.queueIdx];
+                    newQueueIdx = parent.queueIdx + 2;
                 } else {
-                    child.rootIdx = parent.rootIdx;
+                    if (parent.queueIdx >= seqLen) continue;
+                    // identical to branch 0 in every respect; expanding it would clone the beam
+                    if (parent.hold == seq[parent.queueIdx]) continue;
+                    piece       = parent.hold;
+                    newHold     = seq[parent.queueIdx];
+                    newQueueIdx = parent.queueIdx + 1;
                 }
 
-                ++scored;
-                // BEST OF THIS LEVEL. The levelRoot < 0 guard makes the first child of the
-                // level win no matter how negative it is, so a level always has a candidate.
-                // Nothing here touches bestScore/bestRoot: cross-depth comparison is the bug
-                // this structure exists to prevent.
-                if (child.rootIdx >= 0 && (levelRoot < 0 || child.score > levelBest)) {
-                    levelBest = child.score;
-                    levelRoot = child.rootIdx;
-                }
+                generateMoves(parent.board, piece, &S.moves);
 
-                if (nextCount < beamWidth) {
-                    next[nextCount++] = child;
-                    std::push_heap(next, next + nextCount, WorseFirst{});
-                } else if (child.score > next[0].score) {
-                    std::pop_heap(next, next + nextCount, WorseFirst{});
-                    next[nextCount - 1] = child;
-                    std::push_heap(next, next + nextCount, WorseFirst{});
-                }
+                for (int m = 0; m < S.moves.count; ++m) {
+                    const Placement& pl = S.moves.items[m];
 
-                // CLOCK CHECK 2 of 2: every 64 scored children.
-                if ((scored & CLOCK_CHECK_MASK) == 0 && elapsedMs(t0) > budgetMs) {
-                    outOfTime = true;
-                    break;
-                }
-            }
-        }
+                    Node child;
+                    child.board = parent.board;
+                    lockPiece(child.board, piece, pl.rot, pl.x, pl.y);
+                    const int lines = clearLines(child.board);
+
+                    ClearInfo ci;
+                    ci.lines        = (uint8_t)lines;
+                    ci.spin         = pl.spin;
+                    ci.perfectClear = (lines > 0) && isEmpty(child.board);
+                    const int atk = computeAttack(ci, /*b2bActive=*/parent.b2b,
+                                                      /*comboCount=*/parent.combo);
+
+                    child.hold        = newHold;
+                    child.queueIdx    = (int8_t)newQueueIdx;
+                    child.b2b         = (lines > 0) ? b2bMaintaining(ci) : parent.b2b;
+                    child.combo       = (lines > 0)
+                                          ? (uint8_t)(parent.combo < 255 ? parent.combo + 1 : 255)
+                                          : (uint8_t)0;
+                    child.attackScore = parent.attackScore
+                                      + cfg.weights.attackDealt * (float)atk * discount;
+                    child.score       = child.attackScore
+                                      + evaluate(child.board, cfg.weights, child.b2b);
+
+                    if (d == 0) {
+                        if (rootCount >= (int)(sizeof(S.roots) / sizeof(S.roots[0]))) continue;
+                        S.roots[rootCount].placement = pl;
+                        S.roots[rootCount].useHold   = (branch == 1);
+                        child.rootIdx = (int16_t)rootCount;
+                        ++rootCount;
+                    } else {
+                        child.rootIdx = parent.rootIdx;
+                    }
+
+                    ++scored;
+                    // BEST OF THIS LEVEL. The levelRoot < 0 guard makes the first child of the
+                    // level win no matter how negative it is, so a level always has a candidate.
+                    // Nothing here touches bestScore/bestRoot: cross-depth comparison is the bug
+                    // this structure exists to prevent.
+                    if (child.rootIdx >= 0 && (levelRoot < 0 || child.score > levelBest)) {
+                        levelBest = child.score;
+                        levelRoot = child.rootIdx;
+                    }
+
+                    if (nextCount < beamWidth) {
+                        next[nextCount++] = child;
+                        std::push_heap(next, next + nextCount, WorseFirst{});
+                    } else if (child.score > next[0].score) {
+                        std::pop_heap(next, next + nextCount, WorseFirst{});
+                        next[nextCount - 1] = child;
+                        std::push_heap(next, next + nextCount, WorseFirst{});
+                    }
+
+                    // CLOCK CHECK 2 of 2: every 64 scored children.
+                    if ((scored & CLOCK_CHECK_MASK) == 0 && elapsedMs(t0) > budgetMs) {
+                        outOfTime = true;
+                        break;
+                    }
+                }   // for m
+            }       // for branch
+        }           // for i
 
         // PROMOTE. A level that ran to completion replaces the answer, so the returned move is
         // the deepest fully searched level's winner. A level cut short by the clock does not,
