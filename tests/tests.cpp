@@ -894,6 +894,81 @@ static void test_attack_is_zero_when_no_lines_clear() {
     assert(tb::computeAttack(ci(0, tb::SPIN_FULL, false), true, 8) == 0);
 }
 
+// ------------------------------------------------- movegen assumption guards
+
+// The T's centre mino is the one cell present in all four rotation states.
+// Every T-spin corner offset in this milestone is measured from it, and the
+// piece origin is the bounding box's lower-left corner, so it sits at (+1,+1).
+static void test_mg_t_center_is_origin_plus_one_one() {
+    for (int r = 0; r < 4; ++r) {
+        const tb::Cell* c = tb::pieceCells(tb::PIECE_T, static_cast<tb::Rot>(r));
+        bool found = false;
+        for (int i = 0; i < 4; ++i)
+            if (c[i].dx == 1 && c[i].dy == 1) found = true;
+        assert(found);   // see remediation note in the plan if this fires
+    }
+    // And the nub -- the cell that is NOT shared -- points the way the
+    // front-corner table in classifyTSpin says it does.
+    const tb::Cell* t0 = tb::pieceCells(tb::PIECE_T, tb::ROT_0);
+    const tb::Cell* tR = tb::pieceCells(tb::PIECE_T, tb::ROT_R);
+    const tb::Cell* t2 = tb::pieceCells(tb::PIECE_T, tb::ROT_2);
+    const tb::Cell* tL = tb::pieceCells(tb::PIECE_T, tb::ROT_L);
+    bool nub0 = false, nubR = false, nub2 = false, nubL = false;
+    for (int i = 0; i < 4; ++i) {
+        if (t0[i].dx == 1 && t0[i].dy == 2) nub0 = true;   // up
+        if (tR[i].dx == 2 && tR[i].dy == 1) nubR = true;   // right
+        if (t2[i].dx == 1 && t2[i].dy == 0) nub2 = true;   // down
+        if (tL[i].dx == 0 && tL[i].dy == 1) nubL = true;   // left
+    }
+    assert(nub0 && nubR && nub2 && nubL);
+}
+
+// The BFS indexes a flat array by (x, y, rot) and rejects out-of-window states
+// before indexing. The window is derived from this bound, so assert the bound.
+static void test_mg_cell_offsets_fit_zero_to_three() {
+    for (int pi = 0; pi < tb::NUM_PIECES; ++pi) {
+        for (int r = 0; r < 4; ++r) {
+            const tb::Cell* c = tb::pieceCells(static_cast<tb::PieceType>(pi),
+                                              static_cast<tb::Rot>(r));
+            for (int i = 0; i < 4; ++i) {
+                assert(c[i].dx >= 0 && c[i].dx <= 3);
+                assert(c[i].dy >= 0 && c[i].dy <= 3);
+            }
+        }
+    }
+}
+
+// ACT_180 is hardcoded on (Q&A amendment to PRD 4.2), so tryRotate must accept
+// a 0 <-> 2 and R <-> L transition and use KICKS_180. This is the floor-kick
+// case from the kick research, converted to the box-origin convention:
+// a T flat on the floor at (3, -1) cannot 180 in place -- its nub would land at
+// y = -1 -- so test 1 of the 180 table, (0, +1), must lift it to (3, 0).
+static void test_mg_tryRotate_supports_180() {
+    const tb::Board empty{};
+    int nx = -99, ny = -99;
+    uint8_t k = 200;
+    assert(tb::tryRotate(empty, tb::PIECE_T, tb::ROT_0, tb::ROT_2, 3, -1,
+                         &nx, &ny, &k));
+    assert(nx == 3);
+    assert(ny == 0);
+    assert(k == 1);
+}
+
+// O never kicks and its four states are the same four cells, so rotating O
+// always succeeds in place. The BFS relies on this: O reaches all four rotation
+// states, which is why its placement count is 36 and not 9.
+static void test_mg_tryRotate_o_always_succeeds() {
+    const tb::Board empty{};
+    for (int r = 0; r < 4; ++r) {
+        const tb::Rot from = static_cast<tb::Rot>(r);
+        const tb::Rot to = static_cast<tb::Rot>((r + 1) & 3);
+        int nx = -99, ny = -99;
+        uint8_t k = 200;
+        assert(tb::tryRotate(empty, tb::PIECE_O, from, to, 4, 5, &nx, &ny, &k));
+        assert(nx == 4 && ny == 5);
+    }
+}
+
 int main() {
     RUN(test_types_constants);
     RUN(test_piece_cells_spawn_shapes);
@@ -949,6 +1024,10 @@ int main() {
     RUN(test_attack_combo_clamps_at_the_last_entry);
     RUN(test_attack_perfect_clear_adds_ten);
     RUN(test_attack_is_zero_when_no_lines_clear);
+    RUN(test_mg_t_center_is_origin_plus_one_one);
+    RUN(test_mg_cell_offsets_fit_zero_to_three);
+    RUN(test_mg_tryRotate_supports_180);
+    RUN(test_mg_tryRotate_o_always_succeeds);
     std::printf("all %d tests passed\n", g_testCount);
     return 0;
 }
