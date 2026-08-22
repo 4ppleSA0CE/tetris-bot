@@ -13,6 +13,7 @@
 
 #include "core/attack.h"
 #include "core/board.h"
+#include "core/movegen.h"
 #include "core/piece.h"
 #include "core/rng.h"
 #include "core/srs.h"
@@ -46,14 +47,208 @@ void printBoard(const tb::Board& b, unsigned index) {
 void usage() {
     std::fprintf(stderr,
                  "usage: tetris_bot [--seed N] [--pieces N] --random [--print] [--stats]\n"
+                 "       tetris_bot --movegen [FIXTURE|all]\n"
                  "  --random   play uniformly random hard-drop placements\n"
+                 "  --movegen  inspect generated T placements for a fixture\n"
                  "  --print    dump the visible board after every piece\n"
                  "  --stats    print totals at the end\n");
 }
 
 } // namespace
 
+// ---------------------------------------------------------------------------
+// --movegen : move-generation inspection mode (milestone 2).
+//
+// Runs generateMoves for the T piece on a named hand-built fixture, prints
+// every placement classified as a spin together with the action path that
+// reaches it, and prints one GATE line per fixture stating whether the exact
+// expected placement was found. Exit code 0 only if every gate passes.
+// ---------------------------------------------------------------------------
+namespace {
+
+struct MovegenFixture {
+    const char*        name;
+    const char* const* rows;
+    int                nRows;
+    // expX >= 0 : this exact spin placement must exist
+    // expX == -1: there must be ZERO spin placements
+    // expX == -2: no expectation, printed for inspection only
+    int                expX, expY;
+    tb::Rot            expRot;
+    tb::SpinKind       expSpin;
+    int                expKick;
+    int                expLines;
+};
+
+const char* const MG_FIX_TSS[] = {
+    "..........", "...#......", "###...####", ".###.#####",
+};
+const char* const MG_FIX_TSD[] = {
+    "..........", "...#......", "###...####", "####.#####",
+};
+const char* const MG_FIX_TST[] = {
+    "..........", "##........", "#.........", "#.########", "#..#######", "#.########",
+};
+const char* const MG_FIX_MINI[] = {
+    "..........", ".......#..", "#####...##", ".#####.###",
+};
+const char* const MG_FIX_STSD[] = {
+    "..........", "##........", "#.........", "#.########", "#..#######", "#..#######",
+};
+const char* const MG_FIX_NONE[] = {
+    "..........", "##......##", "####..####",
+};
+const char* const MG_FIX_EMPTY[] = {
+    "..........",
+};
+const char* const MG_FIX_MID[] = {
+    "..........", "..........", "#...####..", "##..#####.", "###.#####.",
+    "####.####.", "#####.####", "######.###", "#######.##", "########.#",
+};
+
+const MovegenFixture MG_FIXTURES[] = {
+    { "tss",   MG_FIX_TSS,   4,  3, 0, tb::ROT_2, tb::SPIN_FULL, 0, 1 },
+    { "tsd",   MG_FIX_TSD,   4,  3, 0, tb::ROT_2, tb::SPIN_FULL, 0, 2 },
+    { "tst",   MG_FIX_TST,   6,  0, 0, tb::ROT_R, tb::SPIN_FULL, 4, 3 },
+    { "mini",  MG_FIX_MINI,  4,  5, 0, tb::ROT_0, tb::SPIN_MINI, 0, 1 },
+    { "stsd",  MG_FIX_STSD,  6,  0, 0, tb::ROT_R, tb::SPIN_FULL, 4, 2 },
+    { "none",  MG_FIX_NONE,  3, -1, 0, tb::ROT_0, tb::SPIN_NONE, 0, 0 },
+    { "empty", MG_FIX_EMPTY, 1, -2, 0, tb::ROT_0, tb::SPIN_NONE, 0, 0 },
+    { "mid",   MG_FIX_MID,  10, -2, 0, tb::ROT_0, tb::SPIN_NONE, 0, 0 },
+};
+constexpr int MG_FIXTURE_COUNT =
+    static_cast<int>(sizeof(MG_FIXTURES) / sizeof(MG_FIXTURES[0]));
+
+const char* mgRotName(tb::Rot r) {
+    switch (r) {
+        case tb::ROT_0: return "0";
+        case tb::ROT_R: return "R";
+        case tb::ROT_2: return "2";
+        default:        return "L";
+    }
+}
+
+const char* mgSpinName(tb::SpinKind s) {
+    switch (s) {
+        case tb::SPIN_MINI: return "MINI";
+        case tb::SPIN_FULL: return "FULL";
+        default:            return "NONE";
+    }
+}
+
+const char* mgActionName(tb::Action a) {
+    switch (a) {
+        case tb::ACT_LEFT:      return "L";
+        case tb::ACT_RIGHT:     return "R";
+        case tb::ACT_CW:        return "CW";
+        case tb::ACT_CCW:       return "CCW";
+        case tb::ACT_180:       return "180";
+        case tb::ACT_SOFT_DROP: return "SD";
+        default:                return "?";
+    }
+}
+
+int mgLinesFor(const tb::Board& b, tb::PieceType p, const tb::Placement& pl) {
+    tb::Board c = b;
+    tb::lockPiece(c, p, pl.rot, pl.x, pl.y);
+    return tb::clearLines(c);
+}
+
+void mgPrintPlacement(const tb::Board& b, const tb::Placement& pl) {
+    std::printf("  x=%d y=%d rot=%s spin=%s kick=%u lines=%d pathLen=%u path=",
+                pl.x, pl.y, mgRotName(pl.rot), mgSpinName(pl.spin),
+                static_cast<unsigned>(pl.kickIndex),
+                mgLinesFor(b, tb::PIECE_T, pl),
+                static_cast<unsigned>(pl.pathLen));
+    for (int i = 0; i < pl.pathLen; ++i)
+        std::printf("%s%s", i ? "," : "", mgActionName(pl.path[i]));
+    std::printf("\n");
+}
+
+// Returns true if the fixture's gate passes.
+bool mgRunFixture(const MovegenFixture& f) {
+    const tb::Board b = tb::boardFromAscii(f.rows, f.nRows);
+    static tb::MoveList ml;
+    tb::generateMoves(b, tb::PIECE_T, &ml);
+
+    std::printf("== movegen: %s ==\n", f.name);
+    std::printf("board (top row first):\n");
+    for (int y = f.nRows - 1; y >= 0; --y) {
+        char line[tb::BOARD_W + 1];
+        for (int x = 0; x < tb::BOARD_W; ++x)
+            line[x] = ((b.rows[y] >> x) & 1u) ? '#' : '.';
+        line[tb::BOARD_W] = '\0';
+        std::printf("%s\n", line);
+    }
+
+    int spins = 0;
+    for (int i = 0; i < ml.count; ++i)
+        if (ml.items[i].spin != tb::SPIN_NONE) ++spins;
+    std::printf("piece=T placements=%d spins=%d\n", ml.count, spins);
+
+    std::printf("spin placements:\n");
+    if (spins == 0) std::printf("  (none)\n");
+    for (int i = 0; i < ml.count; ++i)
+        if (ml.items[i].spin != tb::SPIN_NONE) mgPrintPlacement(b, ml.items[i]);
+
+    if (f.expX == -2) {
+        std::printf("GATE %s: SKIP (informational)\n", f.name);
+        return true;
+    }
+    if (f.expX == -1) {
+        const bool ok = (spins == 0);
+        std::printf("GATE %s: %s (%d spin placements)\n",
+                    f.name, ok ? "PASS" : "FAIL", spins);
+        return ok;
+    }
+    for (int i = 0; i < ml.count; ++i) {
+        const tb::Placement& pl = ml.items[i];
+        if (pl.x == f.expX && pl.y == f.expY && pl.rot == f.expRot &&
+            pl.spin == f.expSpin &&
+            static_cast<int>(pl.kickIndex) == f.expKick &&
+            mgLinesFor(b, tb::PIECE_T, pl) == f.expLines) {
+            std::printf("GATE %s: PASS (x=%d y=%d rot=%s spin=%s kick=%d lines=%d)\n",
+                        f.name, f.expX, f.expY, mgRotName(f.expRot),
+                        mgSpinName(f.expSpin), f.expKick, f.expLines);
+            return true;
+        }
+    }
+    std::printf("GATE %s: FAIL (expected x=%d y=%d rot=%s spin=%s kick=%d lines=%d)\n",
+                f.name, f.expX, f.expY, mgRotName(f.expRot),
+                mgSpinName(f.expSpin), f.expKick, f.expLines);
+    return false;
+}
+
+int runMovegenMode(const char* which) {
+    bool all = true;
+    bool matched = false;
+    for (int i = 0; i < MG_FIXTURE_COUNT; ++i) {
+        if (std::strcmp(which, "all") != 0 &&
+            std::strcmp(which, MG_FIXTURES[i].name) != 0) continue;
+        matched = true;
+        if (!mgRunFixture(MG_FIXTURES[i])) all = false;
+    }
+    if (!matched) {
+        std::printf("unknown fixture '%s'. known: all", which);
+        for (int i = 0; i < MG_FIXTURE_COUNT; ++i)
+            std::printf(" %s", MG_FIXTURES[i].name);
+        std::printf("\n");
+        return 2;
+    }
+    std::printf("GATE ALL: %s\n", all ? "PASS" : "FAIL");
+    return all ? 0 : 1;
+}
+
+} // namespace
+
 int main(int argc, char** argv) {
+    for (int i = 1; i < argc; ++i) {
+        if (std::strcmp(argv[i], "--movegen") == 0) {
+            const char* which = (i + 1 < argc) ? argv[i + 1] : "all";
+            return runMovegenMode(which);
+        }
+    }
+
     uint32_t seed = 42;
     int pieces = 50;
     bool doPrint = false;
