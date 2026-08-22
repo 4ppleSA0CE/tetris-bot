@@ -1818,6 +1818,17 @@ static void test_eval_row_transitions() {
     assert(tb::extractFeatures(fixB()).rowTransitions == 12);
 }
 
+static void test_eval_column_transitions() {
+    // FIX_A, scanned y=0..4:
+    //   col0 11111 -> 0, col1 11110 -> 1, col2 11100 -> 1, col3 11000 -> 1, col4 10000 -> 1,
+    //   col5 00000 -> 1 (floor->empty), cols 6..9 -> 1 each
+    assert(tb::extractFeatures(fixA()).columnTransitions == 9);
+    // FIX_B, scanned y=0..3:
+    //   col0 1111 -> 0, col1 0101 -> 4, col2 1111 -> 0, col3 0111 -> 2,
+    //   col4 0000 -> 1, cols 5..9 -> 1 each
+    assert(tb::extractFeatures(fixB()).columnTransitions == 12);
+}
+
 int main() {
     RUN(test_types_constants);
     RUN(test_piece_cells_spawn_shapes);
@@ -1907,6 +1918,7 @@ int main() {
     RUN(test_eval_bumpiness);
     RUN(test_eval_height_penalty);
     RUN(test_eval_row_transitions);
+    RUN(test_eval_column_transitions);
     std::printf("all %d tests passed\n", g_testCount);
     return 0;
 }

@@ -58,6 +58,15 @@ Features extractFeatures(const Board& b) {
         if (!prev) ++f.rowTransitions;          // right wall counts as filled
     }
 
+    for (int c = 0; c < BOARD_W; ++c) {
+        bool prev = true;                       // the floor counts as filled
+        for (int y = 0; y < f.maxHeight; ++y) {
+            bool cur = occ(b, c, y);
+            if (cur != prev) ++f.columnTransitions;
+            prev = cur;
+        }
+    }
+
     return f;
 }
 
