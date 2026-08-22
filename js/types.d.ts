@@ -1,0 +1,100 @@
+/** Evaluator weights (core/eval.h). Every field is overridable via BotConfig. */
+export interface Weights {
+    holes: number;
+    coveredCells: number;
+    bumpiness: number;
+    maxHeight: number;
+    heightPenalty: number;
+    rowTransitions: number;
+    columnTransitions: number;
+    wellDepth: number;
+    tSlotCount: number;
+    b2bActive: number;
+    attackDealt: number;
+}
+/** Mirrors tb::EventType in bindings/snapshot.h. */
+export declare const EventType: {
+    readonly PIECE_LOCK: 0;
+    readonly LINE_CLEAR: 1;
+    readonly TETRIS: 2;
+    readonly TSPIN_MINI: 3;
+    readonly TSPIN_SINGLE: 4;
+    readonly TSPIN_DOUBLE: 5;
+    readonly TSPIN_TRIPLE: 6;
+    readonly B2B_EXTEND: 7;
+    readonly B2B_BREAK: 8;
+    readonly PERFECT_CLEAR: 9;
+    readonly TOPOUT: 10;
+};
+export type EventTypeValue = (typeof EventType)[keyof typeof EventType];
+export interface SnapshotEvent {
+    /** One of EventType. */
+    type: number;
+    /**
+     * PieceType (0-6) for PIECE_LOCK, lines cleared for a clear event, chain
+     * length for B2B_EXTEND, 0 otherwise. Exactly one of LINE_CLEAR / TETRIS /
+     * TSPIN_* fires per line-clearing placement.
+     */
+    param: number;
+    /** The tick this event fired on, low 16 bits of Snapshot.frame. */
+    frame: number;
+}
+/** Spin kind of the placement currently being animated. */
+export declare const SpinKind: {
+    readonly NONE: 0;
+    readonly MINI: 1;
+    readonly FULL: 2;
+};
+/** Piece indices as the core numbers them. -1 means none. */
+export declare const PieceLetter: readonly ["I", "J", "L", "O", "S", "T", "Z"];
+/**
+ * A live, zero-copy window onto the C++ tb::Snapshot in wasm linear memory.
+ * Valid until the next tick(). `rows` and `queue` are views over the heap — do
+ * not retain them across a tick, and never mutate them.
+ */
+export interface Snapshot {
+    readonly frame: number;
+    /** 40 rows of bitmask, row 0 = bottom, bit i = column i occupied. */
+    readonly rows: Uint16Array;
+    readonly activePiece: number;
+    readonly activeRot: number;
+    readonly activeX: number;
+    readonly activeY: number;
+    readonly ghostY: number;
+    /** 0 none, 1 mini, 2 full — known before the piece locks. */
+    readonly pendingSpin: number;
+    /** 0-255 along the current movement path. */
+    readonly pathProgress: number;
+    readonly holdPiece: number;
+    readonly queue: Int8Array;
+    /** Events written this tick. Drained by the renderer every frame. */
+    readonly events: readonly SnapshotEvent[];
+    readonly piecesPlaced: number;
+    readonly linesCleared: number;
+    readonly attackSent: number;
+    readonly b2bCount: number;
+    readonly comboCount: number;
+    /** Measured, not configured. */
+    readonly pps: number;
+    /** 0 idle, 1 playing, 2 topped out. */
+    readonly state: number;
+}
+export interface BotConfig {
+    seed?: number;
+    /** 1-20, default 5. */
+    pps?: number;
+    /** default 5 */
+    searchDepth?: number;
+    /** default 100 */
+    beamWidth?: number;
+    weights?: Partial<Weights>;
+}
+export interface TetrisBot {
+    /** Advance the simulation to this timestamp (host rAF time). */
+    tick(nowMs: number): void;
+    /** Live view; valid until the next tick(). */
+    snapshot(): Snapshot;
+    setPPS(pps: number): void;
+    reset(seed?: number): void;
+    destroy(): void;
+}
