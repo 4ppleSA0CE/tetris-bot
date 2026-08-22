@@ -17,6 +17,8 @@
 #include "core/rng.h"
 #include "core/attack.h"
 #include "core/movegen.h"
+#include "core/eval.h"
+#include <cmath>
 
 static int g_testCount = 0;
 
@@ -1712,6 +1714,50 @@ static void test_mg_placement_fields_are_consistent() {
     }
 }
 
+// ---- Plan 3: evaluator -----------------------------------------------------
+
+static tb::Board fixA() {
+    const char* rows[] = {
+        "..........",
+        "#.........",
+        "##........",
+        "###.......",
+        "####......",
+        "#####.....",
+    };
+    return tb::boardFromAscii(rows, 6);
+}
+
+static void test_eval_ascii_convention() {
+    const char* rows[] = { "##########", ".........." };
+    tb::Board b = tb::boardFromAscii(rows, 2);
+    // rows[nRows-1] is the BOTTOM row (y == 0); rows[0] is the top of the block.
+    assert(b.rows[0] == 0);
+    assert(b.rows[1] == tb::FULL_ROW);
+    assert(b.rows[2] == 0);
+}
+
+static void test_eval_heights() {
+    tb::Board empty{};
+    tb::Features fe = tb::extractFeatures(empty);
+    assert(fe.maxHeight == 0);
+    assert(fe.holes == 0);
+    assert(fe.coveredCells == 0);
+    assert(fe.bumpiness == 0);
+    assert(fe.heightPenalty == 0);
+    assert(fe.rowTransitions == 0);
+    assert(fe.columnTransitions == 0);
+    assert(fe.wellDepth == 0);
+    assert(fe.tSlotCount == 0);
+
+    tb::Board a = fixA();
+    tb::Features fa = tb::extractFeatures(a);
+    assert(fa.maxHeight == 5);
+    assert(tb::columnHeight(a, 0) == 5);
+    assert(tb::columnHeight(a, 4) == 1);
+    assert(tb::columnHeight(a, 9) == 0);
+}
+
 int main() {
     RUN(test_types_constants);
     RUN(test_piece_cells_spawn_shapes);
@@ -1794,6 +1840,8 @@ int main() {
     RUN(test_mg_negative_control_no_spins_anywhere);
     RUN(test_mg_no_duplicate_placement_keys);
     RUN(test_mg_placement_fields_are_consistent);
+    RUN(test_eval_ascii_convention);
+    RUN(test_eval_heights);
     std::printf("all %d tests passed\n", g_testCount);
     return 0;
 }
