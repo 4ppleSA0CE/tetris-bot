@@ -19,6 +19,7 @@
 #include "core/movegen.h"
 #include "core/eval.h"
 #include "core/search.h"
+#include "core/game.h"
 #include <cmath>
 #include <chrono>
 
@@ -2159,6 +2160,116 @@ static void test_search_time_budget() {
     std::printf("      budget: full=%.2fms cut=%.2fms\n", ms, ms1);
 }
 
+// ---- Plan 3: game ----------------------------------------------------------
+
+static void test_game_steps() {
+    tb::SearchConfig cfg;
+    cfg.timeBudgetMs = 1e9f;
+    tb::Game g(42u, cfg);
+
+    assert(g.piecesPlaced() == 0u);
+    assert(g.linesCleared() == 0u);
+    assert(g.attackSent() == 0u);
+    assert(g.b2bCount() == 0);
+    assert(g.comboCount() == 0);
+    assert(!g.toppedOut());
+    assert(g.holdPiece() == tb::PIECE_NONE);
+    assert(g.currentPiece() >= 0 && g.currentPiece() < tb::NUM_PIECES);
+    for (int i = 0; i < tb::PREVIEW_LEN; ++i) {
+        assert(g.queue()[i] >= 0 && g.queue()[i] < tb::NUM_PIECES);
+    }
+
+    for (int i = 0; i < 40; ++i) {
+        g.stepPiece();
+        assert(!g.toppedOut());
+        assert(g.piecesPlaced() == (uint32_t)(i + 1));
+        assert(g.lastSearchMs() >= 0.0f);
+        // every event this step is a known type
+        for (int e = 0; e < g.eventCount(); ++e) {
+            assert(g.eventAt(e).type <= tb::GEV_TOPOUT);
+        }
+        // the board never exceeds the visible field while the game is alive
+        for (int y = tb::VISIBLE_H; y < tb::BOARD_H; ++y) assert(g.board().rows[y] == 0);
+    }
+    assert(g.linesCleared() > 0u);
+    // The hold slot is empty only until the first time the search takes its hold branch, and
+    // over 40 pieces of seven different types it must take it at least once. If this fires,
+    // hold branching is present (Task 13 proves that) but never wins, which plays exactly like
+    // not having hold at all. Investigate the search, do not weaken this line.
+    assert(g.holdPiece() != tb::PIECE_NONE);
+
+    // reset clears everything but the config
+    g.reset(7u);
+    assert(g.piecesPlaced() == 0u);
+    assert(g.linesCleared() == 0u);
+    assert(g.attackSent() == 0u);
+    assert(g.maxB2b() == 0);
+    assert(g.tSpinCount() == 0u);
+    assert(g.holdPiece() == tb::PIECE_NONE);
+    assert(tb::isEmpty(g.board()));
+}
+
+// Required by the plan's obligation 1 (three-way back-to-back). b2bMaintaining() returns false
+// both for "cleared nothing" and for "cleared, but broke the chain" -- it cannot tell them apart,
+// so Game must:
+//     if (lines == 0)              leave b2bActive EXACTLY as it was
+//     else if (b2bMaintaining(ci)) b2bActive = true
+//     else                         b2bActive = false
+// Writing the obvious `b2bActive = b2bMaintaining(ci)` instead zeroes the chain on every
+// non-clearing placement. Building a T-slot takes several of those, so the search would learn
+// that setting up a T-spin destroys back-to-back and stop doing it -- and it would look like a
+// weight-tuning problem, not a bug.
+//
+// b2bActive_ is private, but b2bCount_ is a faithful proxy for it: b2bCount_ is set to >= 1
+// exactly where b2bActive_ is set true, to 0 exactly where it is set false, and left untouched
+// exactly where b2bActive_ is. So `b2bCount() > 0` == b2bActive_ at every observation point.
+//
+// The budget is unbounded so the run is a fixed, deterministic sequence rather than a
+// wall-clock-dependent one: the counts asserted below are pinned facts about seed 42, not
+// probabilities. Over the 250 pieces scanned this run reaches a chain of 3+ consecutive
+// non-clearing placements by piece 53 and its first chain-breaking easy clear by piece 56.
+static void test_game_b2b_survives_non_clearing_pieces() {
+    tb::SearchConfig cfg;
+    cfg.timeBudgetMs = 1e9f;
+    tb::Game g(42u, cfg);
+
+    int      longestQuietRunMidChain = 0;  // consecutive non-clearing placements with a live chain
+    int      quietRun   = 0;
+    int      easyBreaks = 0;               // easy clears seen ending a live chain
+    uint32_t prevLines  = 0;
+    uint16_t prevB2b    = 0;
+
+    for (int i = 0; i < 250 && !g.toppedOut(); ++i) {
+        g.stepPiece();
+        const uint32_t lines = g.linesCleared() - prevLines;
+        const uint16_t b2b   = g.b2bCount();
+
+        if (lines == 0) {
+            // THE ASSERTION THIS TEST EXISTS FOR: a placement that clears nothing is neutral.
+            assert(b2b == prevB2b);
+            if (prevB2b > 0) {
+                ++quietRun;
+                if (quietRun > longestQuietRunMidChain) longestQuietRunMidChain = quietRun;
+            }
+        } else {
+            quietRun = 0;
+            // A non-spin clear of fewer than four lines is an easy clear: it must break a live
+            // chain. This is the other half of the three-way rule.
+            if (prevB2b > 0 && g.lastSpin() == tb::SPIN_NONE && lines < 4) {
+                assert(b2b == 0);
+                ++easyBreaks;
+            }
+        }
+        prevLines = g.linesCleared();
+        prevB2b   = b2b;
+    }
+
+    // Both halves of the rule must actually have been exercised, or the loop above asserted
+    // nothing. "Several" non-clearing pieces mid-chain is the case the bug destroys.
+    assert(longestQuietRunMidChain >= 3);
+    assert(easyBreaks > 0);
+}
+
 int main() {
     RUN(test_types_constants);
     RUN(test_piece_cells_spawn_shapes);
@@ -2259,6 +2370,8 @@ int main() {
     RUN(test_search_prefers_hold_when_better);
     RUN(test_search_topout_semantics);
     RUN(test_search_time_budget);
+    RUN(test_game_steps);
+    RUN(test_game_b2b_survives_non_clearing_pieces);
     std::printf("all %d tests passed\n", g_testCount);
     return 0;
 }

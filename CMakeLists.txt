@@ -21,6 +21,7 @@ set(TB_CORE_SOURCES
     core/movegen.cpp
     core/eval.cpp
     core/search.cpp
+    core/game.cpp
 )
 
 # Shared include dir and warning flags. Every target links this, so a new target
