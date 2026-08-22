@@ -8,6 +8,13 @@ const SIDE_CELLS = 4.5;
 const SIDE_FRACTION = 0.3;
 const HUD_HEIGHT = 22;
 const CELL_GAP = 1;
+const FONT_STACK = 'ui-monospace, SFMono-Regular, Menlo, monospace';
+/** Exponential-smoothing time constants, in ms. alpha = 1 - exp(-dt / tau). */
+const SLIDE_TAU_MS = 45;
+const ROT_TAU_MS = 55;
+/** A frame gap longer than this is a stall, not motion; do not integrate it. */
+const MAX_FRAME_MS = 100;
+const HALF_PI = Math.PI / 2;
 /**
  * Not a color. `currentColor` resolves to the host element's own `color`, and
  * exists solely so a host that forgot to set the custom properties renders
@@ -107,19 +114,87 @@ function drawGhost(ctx, s, th, g) {
         ctx.strokeRect(cellLeft(g, x) + 0.5, cellTop(g, y) + 0.5, size, size);
     }
 }
-function drawActivePiece(ctx, s, th, g) {
+function nowMs() {
+    return typeof performance !== 'undefined' ? performance.now() : Date.now();
+}
+/**
+ * Sub-interpolate between the discrete path states the core reports, so the
+ * piece slides and swings instead of teleporting (PRD section 7.2). Snaps
+ * rather than eases across a piece boundary.
+ */
+function advanceAnimation(a, s, t) {
+    const targetAngle = s.activeRot * HALF_PI;
+    const changed = s.piecesPlaced !== a.pieceSerial || s.activePiece !== a.piece;
+    const dt = a.lastMs > 0 ? Math.min(t - a.lastMs, MAX_FRAME_MS) : 0;
+    a.lastMs = t;
+    if (changed) {
+        a.x = s.activeX;
+        a.y = s.activeY;
+        a.angle = targetAngle;
+        a.piece = s.activePiece;
+        a.pieceSerial = s.piecesPlaced;
+        return;
+    }
+    const slide = 1 - Math.exp(-dt / SLIDE_TAU_MS);
+    a.x += (s.activeX - a.x) * slide;
+    a.y += (s.activeY - a.y) * slide;
+    const spin = 1 - Math.exp(-dt / ROT_TAU_MS);
+    let delta = targetAngle - a.angle;
+    while (delta > Math.PI)
+        delta -= 2 * Math.PI; // shortest arc: 3 -> 0 is +90, not -270
+    while (delta < -Math.PI)
+        delta += 2 * Math.PI;
+    a.angle += delta * spin;
+}
+function drawActivePiece(ctx, s, th, g, a) {
     if (s.activePiece < 0)
         return;
     const cells = getPieceCells(s.activePiece, s.activeRot);
-    ctx.fillStyle = th.cellActive;
+    const targetAngle = s.activeRot * HALF_PI;
     const size = g.cell - CELL_GAP;
+    // Origin cell centre, in CSS pixels.
+    const cx = g.wellX + (a.x + 0.5) * g.cell;
+    const cy = g.wellY + (VISIBLE_ROWS - 1 - a.y + 0.5) * g.cell;
+    ctx.save();
+    ctx.translate(cx, cy);
+    // Draw the TARGET rotation's cells, rotated back by the residual, so the piece
+    // swings into place yet always lands exactly on the cells the core chose.
+    ctx.rotate(a.angle - targetAngle);
+    ctx.fillStyle = th.cellActive;
     for (let i = 0; i < cells.length; i += 2) {
-        const x = s.activeX + (cells[i] ?? 0);
-        const y = s.activeY + (cells[i + 1] ?? 0);
-        if (y < 0 || y >= VISIBLE_ROWS)
-            continue;
-        ctx.fillRect(cellLeft(g, x), cellTop(g, y), size, size);
+        const dx = cells[i] ?? 0;
+        const dy = cells[i + 1] ?? 0;
+        ctx.fillRect(dx * g.cell - size / 2, -dy * g.cell - size / 2, size, size);
     }
+    ctx.restore();
+}
+function drawMiniPiece(ctx, piece, px, py, unit) {
+    if (piece < 0)
+        return;
+    const cells = getPieceCells(piece, 0);
+    for (let i = 0; i < cells.length; i += 2) {
+        const dx = cells[i] ?? 0;
+        const dy = cells[i + 1] ?? 0;
+        ctx.fillRect(px + dx * unit, py - dy * unit, unit - CELL_GAP, unit - CELL_GAP);
+    }
+}
+function drawSide(ctx, s, th, g) {
+    const unit = Math.max(2, Math.round(g.cell * 0.55));
+    ctx.fillStyle = th.cell;
+    drawMiniPiece(ctx, s.holdPiece, g.sideX + unit, g.wellY + unit * 2, unit);
+    for (let i = 0; i < s.queue.length; i++) {
+        drawMiniPiece(ctx, s.queue[i] ?? -1, g.sideX + unit, g.wellY + unit * (6 + i * 3), unit);
+    }
+}
+function drawHud(ctx, s, th, g) {
+    const size = Math.max(9, Math.round(g.cell * 0.42));
+    ctx.font = `${size}px ${FONT_STACK}`;
+    ctx.fillStyle = th.textDim;
+    ctx.textAlign = g.calloutAlign === 'right' ? 'right' : 'left';
+    ctx.textBaseline = 'alphabetic';
+    const line = `${s.pps.toFixed(1)} PPS   ${s.piecesPlaced} PIECES   ` +
+        `${s.linesCleared} LINES   ${s.attackSent} ATK   B2B ${s.b2bCount}`;
+    ctx.fillText(line, g.calloutAlign === 'right' ? g.wellX + g.wellW : g.wellX, g.hudY);
 }
 export function createRenderer(opts) {
     const canvas = opts.canvas;
@@ -128,6 +203,9 @@ export function createRenderer(opts) {
         throw new Error('createRenderer: canvas has no 2d context');
     let geo = computeGeometry(canvas, opts.layout, opts.chrome);
     let observer = null;
+    const anim = {
+        x: 0, y: 0, angle: 0, piece: -2, pieceSerial: -1, lastMs: 0,
+    };
     const resize = () => {
         geo = computeGeometry(canvas, opts.layout, opts.chrome);
         canvas.width = Math.round(geo.w * geo.dpr);
@@ -146,7 +224,12 @@ export function createRenderer(opts) {
         drawWell(ctx, th, g);
         drawLockedCells(ctx, s, th, g);
         drawGhost(ctx, s, th, g);
-        drawActivePiece(ctx, s, th, g);
+        advanceAnimation(anim, s, nowMs());
+        drawActivePiece(ctx, s, th, g, anim);
+        if (opts.chrome === 'full') {
+            drawSide(ctx, s, th, g);
+            drawHud(ctx, s, th, g);
+        }
     };
     const destroy = () => {
         if (observer !== null) {

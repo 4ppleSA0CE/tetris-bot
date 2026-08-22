@@ -26,9 +26,17 @@ assert.deepEqual(bg.args.slice(0, 2), [0, 0]);
 const outline = ops.find((o) => o.op === 'strokeRect' && o.strokeStyle === TEST_VARS['--bot-grid']);
 assert.ok(outline, 'well outline was not stroked with --bot-grid');
 
+// drawSide paints hold + queue previews in --bot-cell too, but outside the
+// well. The well's own strokeRect gives the boundary; no hardcoded pixels.
+const wellRight = outline.args[0] + outline.args[2];
+const cellFills = ops.filter((o) => o.op === 'fillRect' && o.fillStyle === TEST_VARS['--bot-cell']);
+const locked = cellFills.filter((o) => o.args[0] < wellRight);
+const previews = cellFills.filter((o) => o.args[0] >= wellRight);
 // 9 + 2 = 11 locked cells in the fake board.
-const locked = ops.filter((o) => o.op === 'fillRect' && o.fillStyle === TEST_VARS['--bot-cell']);
-assert.equal(locked.length, 11, `expected 11 locked cells, drew ${locked.length}`);
+assert.equal(locked.length, 11, `expected 11 locked cells inside the well, drew ${locked.length}`);
+// hold (1) + queue (5), 4 cells each.
+assert.equal(previews.length, 24,
+  `expected 24 preview cells outside the well, drew ${previews.length}`);
 
 // Cells are drawn bottom-up: board row 0 must be the LOWEST y on screen.
 const ys = locked.map((o) => o.args[1]);
