@@ -2270,6 +2270,43 @@ static void test_game_b2b_survives_non_clearing_pieces() {
     assert(easyBreaks > 0);
 }
 
+static void test_game_determinism() {
+    // The anytime cut-off is wall-clock driven, so identical replay is only guaranteed when
+    // the budget is never reached. That is what the huge timeBudgetMs is for.
+    tb::SearchConfig cfg;
+    cfg.timeBudgetMs = 1e9f;
+
+    tb::Game a(1234u, cfg);
+    tb::Game b(1234u, cfg);
+    for (int i = 0; i < 200; ++i) {
+        a.stepPiece();
+        b.stepPiece();
+        assert(a.toppedOut() == b.toppedOut());
+        if (a.toppedOut()) break;
+        const tb::Placement& pa = a.lastPlacement();
+        const tb::Placement& pb = b.lastPlacement();
+        assert(pa.x == pb.x);
+        assert(pa.y == pb.y);
+        assert(pa.rot == pb.rot);
+        assert(pa.spin == pb.spin);
+        assert(pa.pathLen == pb.pathLen);
+        assert(a.lastUsedHold() == b.lastUsedHold());
+        assert(a.currentPiece() == b.currentPiece());
+        assert(a.holdPiece() == b.holdPiece());
+        for (int y = 0; y < tb::BOARD_H; ++y) assert(a.board().rows[y] == b.board().rows[y]);
+    }
+    assert(a.piecesPlaced() == b.piecesPlaced());
+    assert(a.linesCleared() == b.linesCleared());
+    assert(a.attackSent() == b.attackSent());
+    assert(a.tSpinCount() == b.tSpinCount());
+    assert(a.maxB2b() == b.maxB2b());
+
+    // A different seed must actually produce a different run, or the bag is not being seeded.
+    tb::Game c(99u, cfg);
+    for (int i = 0; i < 200; ++i) c.stepPiece();
+    assert(c.attackSent() != a.attackSent() || c.linesCleared() != a.linesCleared());
+}
+
 int main() {
     RUN(test_types_constants);
     RUN(test_piece_cells_spawn_shapes);
@@ -2372,6 +2409,7 @@ int main() {
     RUN(test_search_time_budget);
     RUN(test_game_steps);
     RUN(test_game_b2b_survives_non_clearing_pieces);
+    RUN(test_game_determinism);
     std::printf("all %d tests passed\n", g_testCount);
     return 0;
 }
