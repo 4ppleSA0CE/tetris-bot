@@ -2493,6 +2493,76 @@ static void test_tempo_dilation() {
     assert(longest >= 190.0);
 }
 
+// ---------------------------------------------------------------------------
+// tb::Game (the native CLI's driver) and tb::BotInstance (the browser's driver)
+// run the same core through two hand-written loops. PRD section 11's criteria
+// 1-3 are measured on Game; the browser runs BotInstance. They must stay
+// observably identical or those criteria certify code that never ships.
+//
+// SCOPE: board bits and every counter, piece for piece. NOT the event stream -
+// the two deliberately differ there, and bindings/bot_instance.cpp is the
+// authority for anything the renderer consumes:
+//   * Game pushes GEV_LINE_CLEAR on every clear AND then the specific event;
+//     BotInstance emits exactly one clear event per placement. The renderer's
+//     calloutText() returns null for LINE_CLEAR, so both render the same.
+//   * Game pushes GEV_B2B_EXTEND on the first difficult clear (chain length 1);
+//     BotInstance waits for the second, because "BACK-TO-BACK x1" is not a
+//     back-to-back. If core/game.cpp is ever reconciled, match BotInstance.
+//
+// Search is anytime: it returns best-so-far the instant it crosses timeBudgetMs.
+// That makes its answer a function of the WALL CLOCK, not just of its inputs, so
+// two loops running the same position can pick different placements whenever one
+// of them happens to be descheduled. Averages do not save this - a run compares
+// 1000 searches, so even a rare hiccup diverges most runs. Measured at the
+// shipped 4.8 ms budget this test failed roughly 1 run in 5.
+//
+// Both sides therefore run with the budget effectively disabled. This test is
+// about the two LOOPS being equivalent; test_search_time_budget is what pins the
+// anytime behaviour, and it is the only place that should depend on the clock.
+// ---------------------------------------------------------------------------
+static void test_game_bot_instance_parity() {
+    tb::SearchConfig cfg;
+    cfg.depth        = 3;
+    cfg.beamWidth    = 24;
+    cfg.timeBudgetMs = 1.0e9f;
+
+    const uint32_t seed = 42;
+    tb::Game        game(seed, cfg);
+    tb::BotInstance bot(seed, 20.0f, cfg.depth, cfg.beamWidth);
+    bot.setTimeBudget(cfg.timeBudgetMs);
+    const tb::Snapshot* s = bot.snapshotPtr();
+
+    const int kPieces = 500;
+    double now = 0.0;
+    int matched = 0;
+
+    for (int p = 1; p <= kPieces; ++p) {
+        game.stepPiece();
+        if (game.toppedOut()) break;
+
+        // Run the animation clock forward until BotInstance has locked piece p.
+        // At 20 pps a placement is >= 50 ms, so a 16.67 ms tick never straddles
+        // two locks; the equality assert below is the tripwire if it ever does.
+        int guard = 0;
+        while (s->piecesPlaced < (uint32_t)p && s->state != 2 && guard++ < 10000) {
+            now += 16.6667;
+            bot.tick(now);
+        }
+        if (s->state == 2) break;
+        assert(s->piecesPlaced == (uint32_t)p);
+
+        for (int y = 0; y < tb::BOARD_H; ++y) assert(game.board().rows[y] == s->rows[y]);
+        assert(game.linesCleared() == s->linesCleared);
+        assert(game.attackSent()   == s->attackSent);
+        assert(game.b2bCount()     == s->b2bCount);
+        assert(game.comboCount()   == s->comboCount);
+        ++matched;
+    }
+
+    std::printf("      game/bot parity: %d pieces identical\n", matched);
+    assert(matched >= 200);
+}
+
 int main() {
     RUN(test_types_constants);
     RUN(test_piece_cells_spawn_shapes);
@@ -2601,6 +2671,7 @@ int main() {
     RUN(test_weight_table);
     RUN(test_bot_instance_path_replay);
     RUN(test_tempo_dilation);
+    RUN(test_game_bot_instance_parity);
     std::printf("all %d tests passed\n", g_testCount);
     return 0;
 }

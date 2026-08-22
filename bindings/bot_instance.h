@@ -43,6 +43,12 @@ public:
     void tick(double nowMs);
     void setPPS(float pps);
     void setWeight(int index, float value);
+    // Not exposed through embind - BotConfig has no budget field and the browser
+    // must keep the shipped 5 ms. This exists so tests can make the anytime search
+    // deterministic: search() returns best-so-far the moment it crosses the budget,
+    // so ANY wall-clock hiccup changes its answer. A run that must be reproducible
+    // sets this high enough that the budget is never reached.
+    void setTimeBudget(float ms);
     void reset(uint32_t seed);
 
     const Snapshot* snapshotPtr() const { return &snap_; }

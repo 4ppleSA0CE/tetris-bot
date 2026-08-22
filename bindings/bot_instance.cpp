@@ -64,6 +64,8 @@ void BotInstance::setWeight(int index, float value) {
     setWeightByName(cfg_.weights, weightName(index), value);
 }
 
+void BotInstance::setTimeBudget(float ms) { cfg_.timeBudgetMs = ms; }
+
 void BotInstance::reset(uint32_t seed) {
     seed_ = seed;
     bag_.reset(seed);
