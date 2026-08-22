@@ -1385,6 +1385,54 @@ static void test_mg_every_path_replays_to_its_placement() {
     assert(checked > 700);
 }
 
+// ------------------------------------------------- movegen: rotation tie-break
+
+// A flat floor with a step at x = 2. The T placement at origin (2, 0) ROT_0 is
+// grounded on that step, and it is reachable two ways:
+//   * translation-last, in 23 actions (2 lefts + 21 soft drops) -- what plain
+//     BFS finds first, and its last action is a soft drop or a left;
+//   * rotation-last, in 25 actions (rotate at spawn, 2 lefts, 21 soft drops,
+//     rotate again) -- the arrival the rule requires.
+// The rotation-last one must win even though it is two actions longer.
+static void test_mg_rotation_last_path_wins_tie_break() {
+    const char* rows[] = {
+        "..........",   // y = 3
+        "..........",   // y = 2
+        "..........",   // y = 1
+        "###.....##",   // y = 0
+    };
+    const tb::Board b = tb::boardFromAscii(rows, 4);
+    static tb::MoveList ml;
+    tb::generateMoves(b, tb::PIECE_T, &ml);
+
+    const tb::Placement* found = nullptr;
+    for (int i = 0; i < ml.count; ++i) {
+        const tb::Placement& pl = ml.items[i];
+        if (pl.x == 2 && pl.y == 0 && pl.rot == tb::ROT_0) found = &pl;
+    }
+    assert(found != nullptr);
+    if (!found->lastWasRotation)
+        std::printf("tie-break lost: (2,0,ROT_0) arrived via action %u, len %u\n",
+                    static_cast<unsigned>(found->path[found->pathLen - 1]),
+                    static_cast<unsigned>(found->pathLen));
+    assert(found->lastWasRotation);
+    assert(found->pathLen > 0);
+    assert(tb::isRotateAction(found->path[found->pathLen - 1]));
+    // 24 actions to reach (2,0) in a non-spawn rotation, plus the final rotate.
+    assert(found->pathLen == 25);
+    // The corners here are nowhere near three, so this is still not a spin --
+    // the rule is about preserving the flag, not about inventing spins.
+    assert(found->spin == tb::SPIN_NONE);
+
+    // And the winning path must still be a real path.
+    int rx = 0, ry = 0;
+    tb::Rot rr = tb::ROT_0;
+    uint8_t rk = 200;
+    bool rlast = false;
+    assert(mgReplayPath(b, tb::PIECE_T, *found, &rx, &ry, &rr, &rk, &rlast));
+    assert(rx == 2 && ry == 0 && rr == tb::ROT_0 && rlast);
+}
+
 int main() {
     RUN(test_types_constants);
     RUN(test_piece_cells_spawn_shapes);
@@ -1458,6 +1506,7 @@ int main() {
     RUN(test_mg_every_placement_is_legal_and_grounded);
     RUN(test_mg_topped_out_board_yields_nothing);
     RUN(test_mg_every_path_replays_to_its_placement);
+    RUN(test_mg_rotation_last_path_wins_tie_break);
     std::printf("all %d tests passed\n", g_testCount);
     return 0;
 }

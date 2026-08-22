@@ -86,6 +86,13 @@ struct BfsScratch {
     uint8_t  via[MG_STATES];      // Action taken from parent to reach here
     uint8_t  kick[MG_STATES];     // kick index of that action; 255 if not a 90-deg rotation
     uint8_t  depth[MG_STATES];    // actions from spawn; BFS order, never rewritten
+    // Parallel to the BFS tree, never part of it: the first rotation edge that
+    // lands on each state. "First" == from the shallowest source, because BFS
+    // pops in non-decreasing depth order. Collection prefers this arrival so a
+    // rotation-last path wins even when it is longer than the tree path.
+    int32_t  rotSrc[MG_STATES];   // predecessor state index, or -1 for none
+    uint8_t  rotAct[MG_STATES];   // ACT_CW / ACT_CCW / ACT_180
+    uint8_t  rotKick[MG_STATES];  // kick index of that rotation; 255 for a 180
     int32_t  queue[MG_STATES];    // FIFO; after the loop it is the visited list
     uint32_t gen;
 };
@@ -173,6 +180,7 @@ void generateMoves(const Board& b, PieceType p, MoveList* out) {
     S.via[root]    = ACT_NONE;
     S.kick[root]   = 255;
     S.depth[root]  = 0;
+    S.rotSrc[root] = -1;
     S.queue[tail++] = root;
 
     while (head < tail) {
@@ -191,14 +199,22 @@ void generateMoves(const Board& b, PieceType p, MoveList* out) {
             if (!mgInStateBounds(nx, ny)) continue;        // reject BEFORE indexing
 
             const int32_t ni = mgStateIndex(nx, ny, nr);
-            if (S.stamp[ni] == S.gen) continue;            // already visited
-
-            S.stamp[ni]  = S.gen;
-            S.parent[ni] = si;
-            S.via[ni]    = static_cast<uint8_t>(a);
-            S.kick[ni]   = nk;
-            S.depth[ni]  = static_cast<uint8_t>(sd + 1);
-            if (tail < MG_STATES) S.queue[tail++] = ni;
+            if (S.stamp[ni] != S.gen) {                    // first time seen
+                S.stamp[ni]  = S.gen;
+                S.parent[ni] = si;
+                S.via[ni]    = static_cast<uint8_t>(a);
+                S.kick[ni]   = nk;
+                S.depth[ni]  = static_cast<uint8_t>(sd + 1);
+                S.rotSrc[ni] = -1;
+                if (tail < MG_STATES) S.queue[tail++] = ni;
+            }
+            // Whether or not the state was new, remember the first rotation
+            // that reaches it. This is what makes a rotation-last path win.
+            if (isRotateAction(a) && S.rotSrc[ni] < 0) {
+                S.rotSrc[ni]  = si;
+                S.rotAct[ni]  = static_cast<uint8_t>(a);
+                S.rotKick[ni] = nk;
+            }
         }
     }
 
@@ -224,13 +240,33 @@ void generateMoves(const Board& b, PieceType p, MoveList* out) {
         mgDecodeState(si, &sx, &sy, &sr);
         if (!collides(b, p, sr, sx, sy - 1)) continue;     // still falling
 
-        const int len = mgRecoverPath(S, si, buf);
+        int len = -1;
+        bool lastRot = false;
+        uint8_t kick = 255;
+
+        if (S.parent[si] >= 0 && isRotateAction(static_cast<Action>(S.via[si]))) {
+            // The BFS tree already arrives by a rotation, and it is shortest.
+            len = mgRecoverPath(S, si, buf);
+            lastRot = true;
+            kick = S.kick[si];
+        } else if (S.rotSrc[si] >= 0) {
+            // Tie-break (PRD 4.4): a rotation-last path beats a translation-last
+            // one even when it is longer, or the spin flag is lost on a
+            // placement that legitimately earned it.
+            const int srcLen = mgRecoverPath(S, S.rotSrc[si], buf);
+            if (srcLen >= 0 && srcLen < MAX_PATH_LEN) {
+                buf[srcLen] = static_cast<Action>(S.rotAct[si]);
+                len = srcLen + 1;
+                lastRot = true;
+                kick = S.rotKick[si];
+            } else {
+                len = mgRecoverPath(S, si, buf);   // rotation path does not fit
+            }
+        } else {
+            len = mgRecoverPath(S, si, buf);
+        }
         assert(len >= 0 && "MAX_PATH_LEN too small -- a legal placement was dropped");
         if (len < 0) continue;   // release builds: skip rather than write past the end
-
-        const bool lastRot = S.parent[si] >= 0 &&
-                             isRotateAction(static_cast<Action>(S.via[si]));
-        const uint8_t kick = lastRot ? S.kick[si] : static_cast<uint8_t>(255);
 
         Placement& pl = out->items[out->count++];
         pl.x = static_cast<int8_t>(sx);
