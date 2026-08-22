@@ -15,6 +15,44 @@ inline bool occ(const Board& b, int x, int y) {
 
 } // namespace
 
+// Counts TSD-shaped slots only: the ROT_2 T with its nub hanging down. T-spin-triple slots and
+// side-entry (ROT_R / ROT_L) slots are NOT counted and are therefore unrewarded by the
+// evaluator. See the preamble of this task before raising W_T_SLOT_COUNT to compensate.
+int countTSlots(const Board& b) {
+    int h[BOARD_W];
+    int maxH = 0;
+    for (int c = 0; c < BOARD_W; ++c) {
+        h[c] = columnHeight(b, c);
+        if (h[c] > maxH) maxH = h[c];
+    }
+
+    int count = 0;
+    for (int cx = 1; cx <= BOARD_W - 2; ++cx) {
+        for (int cy = 1; cy <= maxH; ++cy) {
+            // S1: the four ROT_2 T cells must be empty
+            if (occ(b, cx - 1, cy) || occ(b, cx, cy) || occ(b, cx + 1, cy)) continue;
+            if (occ(b, cx, cy - 1)) continue;
+
+            // S2: the nub sits in a notch
+            bool dl = occ(b, cx - 1, cy - 1);
+            bool dr = occ(b, cx + 1, cy - 1);
+            if (!dl || !dr) continue;
+
+            // S3: at least 3 of 4 diagonals filled, i.e. at least one overhang above
+            bool ul = occ(b, cx - 1, cy + 1);
+            bool ur = occ(b, cx + 1, cy + 1);
+            int corners = (dl ? 1 : 0) + (dr ? 1 : 0) + (ul ? 1 : 0) + (ur ? 1 : 0);
+            if (corners < 3) continue;
+
+            // S4: not roofed over -- some column of the three is open down to cy
+            if (h[cx - 1] > cy && h[cx] > cy && h[cx + 1] > cy) continue;
+
+            ++count;   // S5: one count per distinct (cx, cy)
+        }
+    }
+    return count;
+}
+
 Features extractFeatures(const Board& b) {
     Features f{};
 
@@ -75,6 +113,8 @@ Features extractFeatures(const Board& b) {
         }
         f.wellDepth += d * (d + 1) / 2;
     }
+
+    f.tSlotCount = countTSlots(b);
 
     return f;
 }

@@ -1840,6 +1840,47 @@ static void test_eval_well_depth() {
     assert(fw.holes == 0);
 }
 
+static void test_eval_t_slots() {
+    // A clear T-slot: nub column 4 at y=0, bar at y=1 across columns 3..5,
+    // overhang at (3,2). Diagonals filled: (3,0) (5,0) (3,2) -> 3 of 4.
+    // Column 4 is open all the way up, so S4 passes.
+    const char* clear[] = {
+        "..........",
+        "####......",
+        "###...####",
+        "####.#####",
+    };
+    tb::Board bClear = tb::boardFromAscii(clear, 4);
+    assert(tb::countTSlots(bClear) == 1);
+    assert(tb::extractFeatures(bClear).tSlotCount == 1);
+
+    // Near miss: identical notch, overhang at (3,2) REMOVED. Only 2 diagonals filled,
+    // so S3 fails. This is a plain gap, not a spin slot, and must not count.
+    const char* nearMiss[] = {
+        "..........",
+        "###.......",
+        "###...####",
+        "####.#####",
+    };
+    assert(tb::countTSlots(tb::boardFromAscii(nearMiss, 4)) == 0);
+
+    // Covered: identical notch, but (4,2) and (5,2) are filled so the slot is roofed.
+    // All four diagonals are filled (S3 passes) but S4 fails: no column of 3,4,5 is open
+    // down to y=1. A T can never get in there, so it must not count.
+    const char* covered[] = {
+        "..........",
+        "######....",
+        "###...####",
+        "####.#####",
+    };
+    assert(tb::countTSlots(tb::boardFromAscii(covered, 4)) == 0);
+
+    // Boards with no overhangs at all are structurally incapable of holding a T-slot.
+    assert(tb::countTSlots(fixA()) == 0);
+    assert(tb::countTSlots(fixB()) == 0);
+    assert(tb::countTSlots(tb::Board{}) == 0);
+}
+
 int main() {
     RUN(test_types_constants);
     RUN(test_piece_cells_spawn_shapes);
@@ -1931,6 +1972,7 @@ int main() {
     RUN(test_eval_row_transitions);
     RUN(test_eval_column_transitions);
     RUN(test_eval_well_depth);
+    RUN(test_eval_t_slots);
     std::printf("all %d tests passed\n", g_testCount);
     return 0;
 }
