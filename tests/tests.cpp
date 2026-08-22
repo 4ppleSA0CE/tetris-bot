@@ -1433,6 +1433,73 @@ static void test_mg_rotation_last_path_wins_tie_break() {
     assert(rx == 2 && ry == 0 && rr == tb::ROT_0 && rlast);
 }
 
+// ------------------------------------------------------ movegen: T-spin fixtures
+
+// Locks a placement onto a copy of the board and returns the lines it clears.
+static int mgLinesFor(const tb::Board& b, tb::PieceType p, const tb::Placement& pl) {
+    tb::Board c = b;
+    tb::lockPiece(c, p, pl.rot, pl.x, pl.y);
+    return tb::clearLines(c);
+}
+
+// Finds the placement at an exact (x, y, rot), or nullptr.
+static const tb::Placement* mgFind(const tb::MoveList& ml, int x, int y, tb::Rot r) {
+    for (int i = 0; i < ml.count; ++i) {
+        const tb::Placement& pl = ml.items[i];
+        if (pl.x == x && pl.y == y && pl.rot == r) return &pl;
+    }
+    return nullptr;
+}
+
+static int mgCountSpins(const tb::MoveList& ml) {
+    int n = 0;
+    for (int i = 0; i < ml.count; ++i)
+        if (ml.items[i].spin != tb::SPIN_NONE) ++n;
+    return n;
+}
+
+static void test_mg_tspin_single_fixture() {
+    const char* rows[] = {
+        "..........",   // y = 3
+        "...#......",   // y = 2   the overhang that makes it a spin
+        "###...####",   // y = 1   gap at x = 3,4,5
+        ".###.#####",   // y = 0   gap at x = 0 and x = 4
+    };
+    const tb::Board b = tb::boardFromAscii(rows, 4);
+    static tb::MoveList ml;
+    tb::generateMoves(b, tb::PIECE_T, &ml);
+
+    assert(mgCountSpins(ml) >= 1);
+    const tb::Placement* pl = mgFind(ml, 3, 0, tb::ROT_2);
+    assert(pl != nullptr);
+    assert(pl->lastWasRotation);
+    assert(pl->spin != tb::SPIN_NONE);
+    assert(pl->spin == tb::SPIN_FULL);
+    assert(pl->kickIndex == 0);
+    assert(mgLinesFor(b, tb::PIECE_T, *pl) == 1);
+    // Row y = 1 completes; row y = 0 keeps its hole at x = 0.
+}
+
+static void test_mg_tspin_double_fixture() {
+    const char* rows[] = {
+        "..........",   // y = 3
+        "...#......",   // y = 2
+        "###...####",   // y = 1   gap at x = 3,4,5
+        "####.#####",   // y = 0   gap at x = 4 only -- the one cell that
+    };                  //         separates this fixture from the single
+    const tb::Board b = tb::boardFromAscii(rows, 4);
+    static tb::MoveList ml;
+    tb::generateMoves(b, tb::PIECE_T, &ml);
+
+    assert(mgCountSpins(ml) >= 1);
+    const tb::Placement* pl = mgFind(ml, 3, 0, tb::ROT_2);
+    assert(pl != nullptr);
+    assert(pl->lastWasRotation);
+    assert(pl->spin == tb::SPIN_FULL);
+    assert(pl->kickIndex == 0);
+    assert(mgLinesFor(b, tb::PIECE_T, *pl) == 2);
+}
+
 int main() {
     RUN(test_types_constants);
     RUN(test_piece_cells_spawn_shapes);
@@ -1507,6 +1574,8 @@ int main() {
     RUN(test_mg_topped_out_board_yields_nothing);
     RUN(test_mg_every_path_replays_to_its_placement);
     RUN(test_mg_rotation_last_path_wins_tie_break);
+    RUN(test_mg_tspin_single_fixture);
+    RUN(test_mg_tspin_double_fixture);
     std::printf("all %d tests passed\n", g_testCount);
     return 0;
 }
