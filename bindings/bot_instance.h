@@ -31,9 +31,23 @@ float* bindingsWeightSlot(Weights& w, int index);   // nullptr when out of range
 constexpr float TAIL_FRACTION = 0.25f;
 constexpr float DILATION_MS   = 200.0f;
 
-// OPEN ITEM, PRD section 13: "whether tempo dilation applies to tetrises as well
-// as spins - decide by eye". Defaults to spins only. Flip this one constant to
-// true to dilate 4-line clears too; nothing else needs to change.
+// PRD section 13 asks whether tempo dilation should cover tetrises as well as
+// spins, and says to decide it by eye. SHIPPED VALUE: false, spins only.
+//
+// The mechanical half of that question is settled and needs no further work:
+// recomputeTempo() already reads this, plannedLines_ is already computed before
+// the tempo is set, and tests/animation.mjs measures the dilated and undilated
+// paths separately - so flipping it is a one-line change with no follow-on edits.
+//
+// The aesthetic half is genuinely a judgement and is deliberately NOT recorded
+// here as decided. To settle it:
+//     sed -i '' 's/DILATE_TETRIS = false/DILATE_TETRIS = true/' bindings/bot_instance.h
+//     ./build.sh && npx vite --config demo/vite.config.ts
+// then watch one tetris land at 5 PPS and one at 15 PPS and keep whichever reads
+// better. The argument for leaving it false is that dilation exists to make a spin
+// stand out from everything around it, and dilating the tetris too spends that
+// contrast; the argument for true is that a four-row clear is the biggest thing
+// that happens and currently goes by at routine speed.
 constexpr bool  DILATE_TETRIS = false;
 
 class BotInstance {
