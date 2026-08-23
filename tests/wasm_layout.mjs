@@ -13,6 +13,7 @@ const EXPECTED_FIELDS = [
   'frame', 'rows', 'activePiece', 'activeRot', 'activeX', 'activeY', 'ghostY',
   'pendingSpin', 'pathProgress', 'holdPiece', 'queue', 'eventCount', 'events',
   'piecesPlaced', 'linesCleared', 'attackSent', 'b2bCount', 'comboCount', 'pps', 'state',
+  'cellPiece',
   'event.type', 'event.param', 'event.frame',
 ];
 for (const f of EXPECTED_FIELDS) {
@@ -40,6 +41,8 @@ assert.equal(layout.rows.size, 2);
 assert.equal(layout.queue.count, 5);
 assert.equal(layout.events.count, 8);
 assert.equal(layout.events.size, 4);
+assert.equal(layout.cellPiece.count, 400);
+assert.equal(layout.cellPiece.size, 1);
 assert.equal(layout.pendingSpin.offset + 1, layout.pathProgress.offset,
   'pendingSpin and pathProgress must be adjacent, in that order');
 

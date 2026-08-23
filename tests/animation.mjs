@@ -57,55 +57,37 @@ const FRAME_MS = 1000 / 60;
     `piece moved ${biggestJump} cells in one frame — the path is being skipped`);
 }
 
-// --- 2. tempo dilation ------------------------------------------------------
+// --- 2. pacing is uniform ----------------------------------------------------
+// Dilation was removed: the reference handling paces every placement identically.
 {
-  const bot = await createTetrisBot({ seed: 42, pps: 20 });
-  let t = 0;
-  let spinStart = -1;
-  let spinSerial = 0;
-  let spins = 0;
-  let shortest = Infinity;
-  let routineTotal = 0;
-  let routineCount = 0;
-  let pieceStart = 0;
-  let serial = 0;
-  let sawSpinThisPiece = false;
+  const bot = await createTetrisBot({ seed: 42, pps: 20 });   // 50ms per placement
+  let t = 0, serial = 0, pieceStart = 0, spinThisPiece = false;
+  let spins = 0, plains = 0, longestSpin = 0, longestPlain = 0;
 
-  for (let f = 0; f < 36000; f++) {         // 10 minutes at 60fps
+  for (let f = 0; f < 3600; f++) {                            // 60s at 60fps
     t += FRAME_MS;
     bot.tick(t);
     const s = bot.snapshot();
-    if (s.pendingSpin !== 0 && spinStart < 0) {
-      spinStart = t;
-      spinSerial = s.piecesPlaced;
-      sawSpinThisPiece = true;
-    }
+    if (s.pendingSpin !== 0) spinThisPiece = true;
     if (s.piecesPlaced !== serial) {
-      if (spinStart >= 0 && s.piecesPlaced !== spinSerial) {
-        const dur = t - spinStart;
-        spins++;
-        if (dur < shortest) shortest = dur;
-        spinStart = -1;
-      } else if (!sawSpinThisPiece && serial > 0) {
-        routineTotal += t - pieceStart;
-        routineCount++;
+      if (serial > 0) {
+        const dur = t - pieceStart;
+        if (spinThisPiece) { spins++; longestSpin = Math.max(longestSpin, dur); }
+        else               { plains++; longestPlain = Math.max(longestPlain, dur); }
       }
       serial = s.piecesPlaced;
       pieceStart = t;
-      sawSpinThisPiece = false;
+      spinThisPiece = false;
     }
   }
   bot.destroy();
 
-  const routineAvg = routineTotal / Math.max(1, routineCount);
-  console.log(`dilation: ${spins} spin placements, shortest ${shortest.toFixed(1)}ms, routine avg ${routineAvg.toFixed(1)}ms`);
-  assert.ok(spins > 0, 'the bot never produced a spin placement in 10 simulated minutes');
-  // 20 pps -> 50ms head + 200ms dilated tail = 250ms, minus one 16.7ms observation frame.
-  assert.ok(shortest >= 190,
-    `a spin placement took only ${shortest.toFixed(1)}ms — dilation is not applied`);
-  // Routine placements stay at 1000/20 = 50ms, well under the dilated floor.
-  assert.ok(routineAvg < 120,
-    `routine placements average ${routineAvg.toFixed(1)}ms — dilation is leaking onto everything`);
+  console.log(`pacing: ${spins} spin / ${plains} plain, longest ${longestSpin.toFixed(1)} / ${longestPlain.toFixed(1)}ms`);
+  assert.ok(spins > 0, 'the bot never produced a spin placement');
+  // 50ms nominal, one 16.7ms observation frame of slack. A dilated spin was 250ms.
+  assert.ok(longestSpin <= 70,
+    `a spin placement took ${longestSpin.toFixed(1)}ms - tempo dilation has come back`);
+  assert.ok(longestPlain <= 70, `a plain placement took ${longestPlain.toFixed(1)}ms`);
 }
 
-console.log('animation OK: pieces slide along the path and spins are dilated');
+console.log('animation OK: pieces step along the path and every placement is paced the same');

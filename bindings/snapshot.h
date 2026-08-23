@@ -4,6 +4,12 @@
 
 namespace tb {
 
+// 40 rows x 10 columns. Kept here rather than pulled from core/types.h so that
+// snapshot.h stays a standalone description of the wasm boundary.
+constexpr int BOARD_CELLS = 40 * 10;
+/** cellPiece entry for a cell nothing has locked into. */
+constexpr uint8_t CELL_EMPTY = 0xFF;
+
 // Contract: bindings/snapshot.h (PRD section 5.1, AMENDED).
 enum EventType : uint8_t {
     EV_PIECE_LOCK = 0, EV_LINE_CLEAR = 1, EV_TETRIS = 2,
@@ -47,6 +53,14 @@ struct Snapshot {
     uint16_t comboCount;
     float    pps;            // measured, not configured
     uint8_t  state;          // 0 idle, 1 playing, 2 topped out
+    // Which PIECE filled each cell, for per-piece colouring. 0-6, or CELL_EMPTY.
+    // Indexed [y * 10 + x], same coordinate convention as rows: y=0 is the bottom.
+    //
+    // rows[] is a bitmask and carries no piece identity, so a renderer cannot tell
+    // that a locked cell was an S. This grid is maintained by BotInstance rather
+    // than by core/: the colour of a settled cell is a presentation concern, and
+    // core's Board stays a pure bitmask because that is what makes the search fast.
+    uint8_t  cellPiece[BOARD_CELLS];
 };
 
 constexpr int SNAPSHOT_MAX_EVENTS = 8;
@@ -55,12 +69,13 @@ constexpr int SNAPSHOT_MAX_EVENTS = 8;
 // runtime - but an accidental layout change should be loud at compile time.
 static_assert(sizeof(Event) == 4,               "Event layout changed");
 static_assert(alignof(Event) == 2,              "Event alignment changed");
-static_assert(sizeof(Snapshot) == 156,          "Snapshot layout changed");
+static_assert(sizeof(Snapshot) == 556,          "Snapshot layout changed");
 static_assert(alignof(Snapshot) == 4,           "Snapshot alignment changed");
 static_assert(offsetof(Snapshot, rows) == 4,    "Snapshot.rows moved");
 static_assert(offsetof(Snapshot, pendingSpin) == 89,  "Snapshot.pendingSpin moved");
 static_assert(offsetof(Snapshot, pathProgress) == 90, "Snapshot.pathProgress moved");
 static_assert(offsetof(Snapshot, events) == 98, "Snapshot.events moved");
 static_assert(offsetof(Snapshot, state) == 152, "Snapshot.state moved");
+static_assert(offsetof(Snapshot, cellPiece) == 153, "Snapshot.cellPiece moved");
 
 } // namespace tb

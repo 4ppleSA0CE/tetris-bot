@@ -68,6 +68,7 @@ export class SnapshotView implements Snapshot {
   private dv!: DataView;
   private rowsView!: Uint16Array;
   private queueView!: Int8Array;
+  private cellPieceView!: Uint8Array;
   private readonly eventBuf: SnapshotEvent[] = [];
   /** Diagnostics: how many times the views have been rebuilt. Starts at 1. */
   rebinds = 0;
@@ -91,6 +92,7 @@ export class SnapshotView implements Snapshot {
     this.dv = new DataView(b, this.ptr, this.structSize);
     this.rowsView = new Uint16Array(b, this.ptr + this.L.rows!.offset, this.L.rows!.count);
     this.queueView = new Int8Array(b, this.ptr + this.L.queue!.offset, this.L.queue!.count);
+    this.cellPieceView = new Uint8Array(b, this.ptr + this.L.cellPiece!.offset, this.L.cellPiece!.count);
     this.rebinds++;
   }
 
@@ -119,6 +121,7 @@ export class SnapshotView implements Snapshot {
   get pathProgress(): number { return this.u8('pathProgress'); }
   get holdPiece(): number { return this.i8('holdPiece'); }
   get queue(): Int8Array { return this.queueView; }
+  get cellPiece(): Uint8Array { return this.cellPieceView; }
   get piecesPlaced(): number { return this.u32('piecesPlaced'); }
   get linesCleared(): number { return this.u32('linesCleared'); }
   get attackSent(): number { return this.u32('attackSent'); }

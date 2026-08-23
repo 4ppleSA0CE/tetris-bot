@@ -5,6 +5,7 @@
 #include <cstring>
 
 #include "core/board.h"
+#include "core/piece.h"
 #include "core/srs.h"
 #include "core/attack.h"
 
@@ -70,6 +71,7 @@ void BotInstance::reset(uint32_t seed) {
     seed_ = seed;
     bag_.reset(seed);
     std::memset(&board_, 0, sizeof(board_));
+    std::memset(cellPiece_, CELL_EMPTY, sizeof(cellPiece_));
     std::memset(&snap_, 0, sizeof(snap_));
     hold_    = PIECE_NONE;
     current_ = bag_.next();
@@ -163,13 +165,7 @@ void BotInstance::buildPathStates() {
 }
 
 void BotInstance::recomputeTempo() {
-    const double D = 1000.0 / static_cast<double>(pps_);
-    const bool dilate = (plan_.spin != SPIN_NONE) ||
-                        (DILATE_TETRIS && plannedLines_ == 4);
-    headMs_ = (1.0 - TAIL_FRACTION) * D;
-    const double proportionalTail = TAIL_FRACTION * D;
-    tailMs_ = dilate ? std::max(static_cast<double>(DILATION_MS), proportionalTail)
-                     : proportionalTail;
+    pieceMs_ = 1000.0 / static_cast<double>(pps_);
 }
 
 void BotInstance::plan() {
@@ -206,7 +202,39 @@ void BotInstance::plan() {
 }
 
 void BotInstance::lockCurrent() {
+    // Paint the colour grid before the board changes under it.
+    {
+        const Cell* cs = pieceCells(current_, plan_.rot);
+        for (int i = 0; i < 4; ++i) {
+            const int cx = plan_.x + cs[i].dx;
+            const int cy = plan_.y + cs[i].dy;
+            if (cx >= 0 && cx < BOARD_W && cy >= 0 && cy < BOARD_H) {
+                cellPiece_[cy * BOARD_W + cx] = static_cast<uint8_t>(current_);
+            }
+        }
+    }
+
     lockPiece(board_, current_, plan_.rot, plan_.x, plan_.y);
+
+    // Mirror clearLines' compaction onto the colour grid. This MUST run after
+    // lockPiece and before clearLines: clearLines is what destroys the evidence of
+    // which rows were full, and the two must agree cell for cell or the board is
+    // painted in the wrong colours from here on.
+    {
+        int write = 0;
+        for (int read = 0; read < BOARD_H; ++read) {
+            if (board_.rows[read] == FULL_ROW) continue;
+            if (write != read) {
+                std::memcpy(&cellPiece_[write * BOARD_W], &cellPiece_[read * BOARD_W],
+                            static_cast<size_t>(BOARD_W));
+            }
+            ++write;
+        }
+        for (int y = write; y < BOARD_H; ++y) {
+            std::memset(&cellPiece_[y * BOARD_W], CELL_EMPTY, static_cast<size_t>(BOARD_W));
+        }
+    }
+
     const int lines = clearLines(board_);
 
     ClearInfo ci{};
@@ -295,17 +323,8 @@ void BotInstance::lockCurrent() {
 }
 
 void BotInstance::writeActive(double nowMs) {
-    const double elapsed = nowMs - pieceStartMs_;
-    double u;
-    if (elapsed <= headMs_) {
-        u = (headMs_ > 0.0) ? (elapsed / headMs_) * (1.0 - TAIL_FRACTION)
-                            : (1.0 - TAIL_FRACTION);
-    } else {
-        double v = (tailMs_ > 0.0) ? (elapsed - headMs_) / tailMs_ : 1.0;
-        v = std::clamp(v, 0.0, 1.0);
-        const double eased = 1.0 - (1.0 - v) * (1.0 - v) * (1.0 - v);  // easeOutCubic
-        u = (1.0 - TAIL_FRACTION) + eased * TAIL_FRACTION;
-    }
+    // Linear across the piece interval: constant-rate stepping along the path.
+    double u = pieceMs_ > 0.0 ? (nowMs - pieceStartMs_) / pieceMs_ : 1.0;
     u = std::clamp(u, 0.0, 1.0);
 
     snap_.pathProgress = static_cast<uint8_t>(u * 255.0 + 0.5);
@@ -323,6 +342,7 @@ void BotInstance::writeActive(double nowMs) {
 
 void BotInstance::writeStats() {
     std::memcpy(snap_.rows, board_.rows, sizeof(snap_.rows));
+    std::memcpy(snap_.cellPiece, cellPiece_, sizeof(snap_.cellPiece));
     snap_.holdPiece    = static_cast<int8_t>(hold_);
     for (int i = 0; i < PREVIEW_LEN; ++i) snap_.queue[i] = static_cast<int8_t>(queue_[i]);
     snap_.piecesPlaced = piecesPlaced_;
@@ -352,10 +372,9 @@ void BotInstance::tick(double nowMs) {
 
     int advanced = 0;
     while (planValid_) {
-        const double total = headMs_ + tailMs_;
-        if (nowMs - pieceStartMs_ < total) break;
+        if (nowMs - pieceStartMs_ < pieceMs_) break;
         if (++advanced > MAX_PIECES_PER_TICK) { pieceStartMs_ = nowMs; break; }
-        pieceStartMs_ += total;
+        pieceStartMs_ += pieceMs_;
         lockCurrent();
         if (toppedOut_) return;
         plan();

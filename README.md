@@ -122,22 +122,36 @@ The renderer ships no colors. It reads eight CSS custom properties from the canv
 |---|---|
 | `--bot-bg` | Canvas background |
 | `--bot-grid` | Well outline |
-| `--bot-cell` | Locked cells, hold and queue previews |
-| `--bot-cell-active` | The falling piece |
-| `--bot-cell-ghost` | Drop preview outline |
+| `--bot-cell` | Fallback for a cell with no piece identity |
+| `--bot-cell-active` | Fallback for the falling piece |
+| `--bot-cell-ghost` | Fallback for the drop preview outline |
 | `--bot-text` | Reserved for host text |
 | `--bot-text-dim` | The HUD stat line |
 | `--bot-accent` | **Callouts only** |
+| `--bot-piece-i` … `--bot-piece-z` | One per piece: locked cells, the falling piece, the ghost outline, and the hold/queue previews |
+
+Cells are painted by **piece**, not by state. `Snapshot.cellPiece` carries the piece that
+locked into each cell (`rows` is only a bitmask and has no piece identity), so a settled S
+stays an S. The three `--bot-cell*` properties survive as the per-context fallback for a cell
+whose piece is unknown, which is what a monochrome host sets to go back to greyscale.
 
 **Discipline rule:** the accent appears nowhere except T-spin and B2B callouts. It is the only color on screen and it should stay that way — a single accent that occurs nowhere else lands disproportionately hard. `tests/renderer_discipline.mjs` enforces this: the renderer source must contain zero color literals, and `--bot-accent` must be read by exactly one function called from exactly one place.
 
 `layout` is `'demo'` (well centred, HUD beneath) or `'sidebar'` (well on the right at `viewport height / 22` per cell). `chrome` is `'full'` (HUD + previews + callouts), `'minimal'` (callouts only), or `'none'` (board only).
 
-## Animation
+## Movement
 
-The core advances the piece along its real BFS path and reports the discrete state plus a `pathProgress` in 0–255. The renderer sub-interpolates with frame-rate-independent exponential smoothing (`alpha = 1 - exp(-dt/tau)`; `tau` is 45 ms for translation, 55 ms for rotation), and rotates the canvas by the residual angle about the piece origin so the piece swings into place yet always lands exactly on the SRS cells the search chose.
+**Discrete, cell-snapped, no interpolation** — jstris / TETR.IO handling. The core advances the
+piece one step at a time along the exact BFS path it found, and the renderer paints it on that
+cell. The piece still visibly walks its route and performs its wall kicks; there is simply no
+easing between cells, no rotation swing, and no per-frame animation state. What the core reports
+is what gets painted, which is also what makes the position assertable in a test.
 
-**Tempo dilation.** The last 25% of every placement's path normally takes its proportional share of the piece budget. When the placement is a spin, that tail is stretched to 200 ms of wall clock with an `easeOutCubic` deceleration. At 15 PPS a routine placement takes 66.7 ms and a T-spin takes 250 ms. This is how "insane speed" and "look what it just did" coexist instead of cancelling each other — at a flat 15 PPS an undilated T-spin is an unreadable blur. `DILATE_TETRIS` in `bindings/bot_instance.h` extends the same treatment to tetrises; it defaults to off.
+**Pacing is uniform.** Every placement occupies exactly one piece interval, `1000/pps` ms,
+whether or not it is a spin. An earlier build stretched the tail of a spin to 200 ms to make it
+readable at high speed; that was removed, because the handling this follows paces everything
+identically and warping the clock is the kind of animation this build deliberately does not do.
+`tests/animation.mjs` and `test_uniform_pacing` assert the removal stays removed.
 
 ## Building from source
 

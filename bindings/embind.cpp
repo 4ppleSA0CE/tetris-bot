@@ -50,6 +50,7 @@ std::string getSnapshotLayout() {
     s += LAY(comboCount,   "u16", 1);   s += ",";
     s += LAY(pps,          "f32", 1);   s += ",";
     s += LAY(state,        "u8",  1);   s += ",";
+    s += LAY(cellPiece,    "u8",  400); s += ",";
     s += ELAY(type,  "u8");  s += ",";
     s += ELAY(param, "u8");  s += ",";
     s += ELAY(frame, "u16");

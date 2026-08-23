@@ -49,6 +49,7 @@ export class SnapshotView {
     dv;
     rowsView;
     queueView;
+    cellPieceView;
     eventBuf = [];
     /** Diagnostics: how many times the views have been rebuilt. Starts at 1. */
     rebinds = 0;
@@ -70,6 +71,7 @@ export class SnapshotView {
         this.dv = new DataView(b, this.ptr, this.structSize);
         this.rowsView = new Uint16Array(b, this.ptr + this.L.rows.offset, this.L.rows.count);
         this.queueView = new Int8Array(b, this.ptr + this.L.queue.offset, this.L.queue.count);
+        this.cellPieceView = new Uint8Array(b, this.ptr + this.L.cellPiece.offset, this.L.cellPiece.count);
         this.rebinds++;
     }
     /** Revalidate against heap growth. Call before every read. */
@@ -96,6 +98,7 @@ export class SnapshotView {
     get pathProgress() { return this.u8('pathProgress'); }
     get holdPiece() { return this.i8('holdPiece'); }
     get queue() { return this.queueView; }
+    get cellPiece() { return this.cellPieceView; }
     get piecesPlaced() { return this.u32('piecesPlaced'); }
     get linesCleared() { return this.u32('linesCleared'); }
     get attackSent() { return this.u32('attackSent'); }

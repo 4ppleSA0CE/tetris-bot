@@ -67,6 +67,12 @@ export interface Snapshot {
   readonly pendingSpin: number;
   /** 0-255 along the current movement path. */
   readonly pathProgress: number;
+  /**
+   * Which piece filled each cell, for per-piece colouring. 0-6, or 255 for empty.
+   * Indexed [y * 10 + x]; y = 0 is the bottom row, same as `rows`.
+   * A view over the heap - do not retain it across a tick.
+   */
+  readonly cellPiece: Uint8Array;
   readonly holdPiece: number;
   readonly queue: Int8Array;
   /** Events written this tick. Drained by the renderer every frame. */

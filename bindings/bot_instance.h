@@ -24,31 +24,12 @@ namespace tb {
 // pins the two together.
 float* bindingsWeightSlot(Weights& w, int index);   // nullptr when out of range
 
-// --- animation tempo (PRD section 7.2) -------------------------------------
-// The last TAIL_FRACTION of every placement's path is the "interesting" part.
-// Normally it takes its proportional share of the piece budget; when the
-// placement is a spin it is stretched to DILATION_MS of wall clock instead.
-constexpr float TAIL_FRACTION = 0.25f;
-constexpr float DILATION_MS   = 200.0f;
-
-// PRD section 13 asks whether tempo dilation should cover tetrises as well as
-// spins, and says to decide it by eye. SHIPPED VALUE: false, spins only.
-//
-// The mechanical half of that question is settled and needs no further work:
-// recomputeTempo() already reads this, plannedLines_ is already computed before
-// the tempo is set, and tests/animation.mjs measures the dilated and undilated
-// paths separately - so flipping it is a one-line change with no follow-on edits.
-//
-// The aesthetic half is genuinely a judgement and is deliberately NOT recorded
-// here as decided. To settle it:
-//     sed -i '' 's/DILATE_TETRIS = false/DILATE_TETRIS = true/' bindings/bot_instance.h
-//     ./build.sh && npx vite --config demo/vite.config.ts
-// then watch one tetris land at 5 PPS and one at 15 PPS and keep whichever reads
-// better. The argument for leaving it false is that dilation exists to make a spin
-// stand out from everything around it, and dilating the tetris too spends that
-// contrast; the argument for true is that a four-row clear is the biggest thing
-// that happens and currently goes by at routine speed.
-constexpr bool  DILATE_TETRIS = false;
+// --- pacing -----------------------------------------------------------------
+// Every placement occupies exactly one piece interval, 1000/pps ms, and the piece
+// is stepped along its BFS path linearly across it. There is deliberately no spin
+// dilation and no easing: the reference handling this build follows (jstris /
+// TETR.IO, and the portfolio's own engine) paces every placement identically, and
+// warping the clock for spins is precisely the animation this build does not do.
 
 class BotInstance {
 public:
@@ -71,7 +52,7 @@ public:
 private:
     void plan();               // search, install the next placement, replay its path
     void buildPathStates();    // fill pathX_/pathY_/pathR_ by replaying plan_.path
-    void recomputeTempo();     // headMs_ / tailMs_ from pps_ and the pending spin
+    void recomputeTempo();     // pieceMs_ from pps_
     void lockCurrent();        // apply plan_, fire events, advance the queue
     void writeActive(double nowMs);
     void writeStats();
@@ -80,6 +61,8 @@ private:
 
     Bag          bag_;
     Board        board_{};
+    // Parallel to board_: which piece locked into each cell. See snapshot.h.
+    uint8_t      cellPiece_[BOARD_CELLS]{};
     SearchConfig cfg_{};
     Snapshot     snap_{};
 
@@ -106,8 +89,7 @@ private:
     int8_t    pathR_[MAX_PATH_LEN + 1]{};
     int       pathSteps_ = 0;
 
-    double headMs_        = 0.0;
-    double tailMs_        = 0.0;
+    double pieceMs_       = 0.0;
     double pieceStartMs_  = 0.0;
     double lastNowMs_     = 0.0;
     bool   started_       = false;

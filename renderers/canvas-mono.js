@@ -9,12 +9,16 @@ const SIDE_FRACTION = 0.3;
 const HUD_HEIGHT = 22;
 const CELL_GAP = 1;
 const FONT_STACK = 'ui-monospace, SFMono-Regular, Menlo, monospace';
-/** Exponential-smoothing time constants, in ms. alpha = 1 - exp(-dt / tau). */
-const SLIDE_TAU_MS = 45;
-const ROT_TAU_MS = 55;
-/** A frame gap longer than this is a stall, not motion; do not integrate it. */
-const MAX_FRAME_MS = 100;
-const HALF_PI = Math.PI / 2;
+/** cellPiece entry for a cell nothing has locked into (bindings/snapshot.h). */
+const CELL_EMPTY = 255;
+/**
+ * Piece order is the core's: I J L O S T Z. Read from custom properties like every
+ * other paint in this file, so a host restyles the whole board without touching TS.
+ */
+const PIECE_VARS = [
+    '--bot-piece-i', '--bot-piece-j', '--bot-piece-l', '--bot-piece-o',
+    '--bot-piece-s', '--bot-piece-t', '--bot-piece-z',
+];
 /** PRD section 7.3: brief scale-in, fade over ~800ms. */
 const CALLOUT_LIFE_MS = 800;
 const CALLOUT_POP_MS = 120;
@@ -44,6 +48,7 @@ function readTheme(el) {
         cellGhost: v('--bot-cell-ghost'),
         text: v('--bot-text'),
         textDim: v('--bot-text-dim'),
+        piece: PIECE_VARS.map(v),
     };
 }
 function computeGeometry(canvas, layout, chrome) {
@@ -87,6 +92,14 @@ function computeGeometry(canvas, layout, chrome) {
         calloutAlign,
     };
 }
+/**
+ * A piece's paint. `fallback` is what an empty or unknown cell uses, which is how
+ * --bot-cell / --bot-cell-active / --bot-cell-ghost stay meaningful now that the
+ * board is coloured per piece: they are the neutral default for each context.
+ */
+function pieceFill(th, piece, fallback) {
+    return (piece >= 0 && piece < 7 ? th.piece[piece] : undefined) ?? fallback;
+}
 const cellLeft = (g, x) => g.wellX + x * g.cell;
 const cellTop = (g, y) => g.wellY + (VISIBLE_ROWS - 1 - y) * g.cell;
 function drawWell(ctx, th, g) {
@@ -95,15 +108,16 @@ function drawWell(ctx, th, g) {
     ctx.strokeRect(g.wellX + 0.5, g.wellY + 0.5, g.wellW, g.wellH);
 }
 function drawLockedCells(ctx, s, th, g) {
-    ctx.fillStyle = th.cell;
     const size = g.cell - CELL_GAP;
     for (let y = 0; y < VISIBLE_ROWS; y++) {
         const bits = s.rows[y] ?? 0;
         if (bits === 0)
             continue;
         for (let x = 0; x < BOARD_COLS; x++) {
-            if ((bits >> x) & 1)
-                ctx.fillRect(cellLeft(g, x), cellTop(g, y), size, size);
+            if (((bits >> x) & 1) === 0)
+                continue;
+            ctx.fillStyle = pieceFill(th, s.cellPiece[y * BOARD_COLS + x] ?? CELL_EMPTY, th.cell);
+            ctx.fillRect(cellLeft(g, x), cellTop(g, y), size, size);
         }
     }
 }
@@ -111,7 +125,8 @@ function drawGhost(ctx, s, th, g) {
     if (s.activePiece < 0)
         return;
     const cells = getPieceCells(s.activePiece, s.activeRot);
-    ctx.strokeStyle = th.cellGhost;
+    // Outlined in the piece's own colour, not a flat neutral.
+    ctx.strokeStyle = pieceFill(th, s.activePiece, th.cellGhost);
     ctx.lineWidth = 1;
     const size = g.cell - CELL_GAP;
     for (let i = 0; i < cells.length; i += 2) {
@@ -126,66 +141,33 @@ function nowMs() {
     return typeof performance !== 'undefined' ? performance.now() : Date.now();
 }
 /**
- * Sub-interpolate between the discrete path states the core reports, so the
- * piece slides and swings instead of teleporting (PRD section 7.2). Snaps
- * rather than eases across a piece boundary.
+ * DISCRETE, cell-snapped, no interpolation - jstris / TETR.IO handling rather than
+ * an eased slide. The core already advances the piece one path step at a time along
+ * the route the BFS found, so the piece still visibly walks its route and performs
+ * its kicks; it just does it on cell boundaries instead of being smoothed between
+ * them. There is deliberately no per-frame animation state: what the core reports is
+ * exactly what gets painted, which is also why the position is testable.
  */
-function advanceAnimation(a, s, t) {
-    const targetAngle = s.activeRot * HALF_PI;
-    const changed = s.piecesPlaced !== a.pieceSerial || s.activePiece !== a.piece;
-    const dt = a.lastMs > 0 ? Math.min(t - a.lastMs, MAX_FRAME_MS) : 0;
-    a.lastMs = t;
-    if (changed) {
-        a.x = s.activeX;
-        a.y = s.activeY;
-        a.angle = targetAngle;
-        a.piece = s.activePiece;
-        a.pieceSerial = s.piecesPlaced;
-        return;
-    }
-    const slide = 1 - Math.exp(-dt / SLIDE_TAU_MS);
-    a.x += (s.activeX - a.x) * slide;
-    a.y += (s.activeY - a.y) * slide;
-    const spin = 1 - Math.exp(-dt / ROT_TAU_MS);
-    let delta = targetAngle - a.angle;
-    while (delta > Math.PI)
-        delta -= 2 * Math.PI; // shortest arc: 3 -> 0 is +90, not -270
-    while (delta < -Math.PI)
-        delta += 2 * Math.PI;
-    a.angle += delta * spin;
-}
-function drawActivePiece(ctx, s, th, g, a) {
+function drawActivePiece(ctx, s, th, g) {
     if (s.activePiece < 0)
         return;
     const cells = getPieceCells(s.activePiece, s.activeRot);
-    const targetAngle = s.activeRot * HALF_PI;
     const size = g.cell - CELL_GAP;
-    // Origin cell centre, in CSS pixels.
-    const cx = g.wellX + (a.x + 0.5) * g.cell;
-    const cy = g.wellY + (VISIBLE_ROWS - 1 - a.y + 0.5) * g.cell;
-    ctx.save();
-    ctx.translate(cx, cy);
-    // Draw the TARGET rotation's cells, rotated back by the residual, so the piece
-    // swings into place yet always lands exactly on the cells the core chose.
-    ctx.rotate(a.angle - targetAngle);
-    ctx.fillStyle = th.cellActive;
+    ctx.fillStyle = pieceFill(th, s.activePiece, th.cellActive);
     for (let i = 0; i < cells.length; i += 2) {
-        const dx = cells[i] ?? 0;
-        const dy = cells[i + 1] ?? 0;
-        // Clip to the visible well, exactly as drawGhost does. The piece spawns at
-        // row 21 - above the field - and about a fifth of all frames have at least one
-        // cell up there, so without this the piece is painted floating above the well's
-        // top border. The test for this is in tests/renderer_board.mjs.
-        const row = s.activeY + dy;
-        if (row < 0 || row >= VISIBLE_ROWS)
+        const x = s.activeX + (cells[i] ?? 0);
+        const y = s.activeY + (cells[i + 1] ?? 0);
+        // The piece spawns at row 21, above the field. Without this it paints outside
+        // the well's top border. tests/renderer_board.mjs pins it.
+        if (y < 0 || y >= VISIBLE_ROWS)
             continue;
-        ctx.fillRect(dx * g.cell - size / 2, -dy * g.cell - size / 2, size, size);
+        ctx.fillRect(cellLeft(g, x), cellTop(g, y), size, size);
     }
-    ctx.restore();
 }
-function drawMiniPiece(ctx, piece, px, py, unit) {
+function drawMiniPiece(ctx, th, piece, px, py, unit) {
     if (piece < 0)
         return;
+    ctx.fillStyle = pieceFill(th, piece, th.cell);
     const cells = getPieceCells(piece, 0);
     for (let i = 0; i < cells.length; i += 2) {
         const dx = cells[i] ?? 0;
@@ -195,10 +177,9 @@ function drawMiniPiece(ctx, piece, px, py, unit) {
 }
 function drawSide(ctx, s, th, g) {
     const unit = Math.max(2, Math.round(g.cell * 0.55));
-    ctx.fillStyle = th.cell;
-    drawMiniPiece(ctx, s.holdPiece, g.sideX + unit, g.wellY + unit * 2, unit);
+    drawMiniPiece(ctx, th, s.holdPiece, g.sideX + unit, g.wellY + unit * 2, unit);
     for (let i = 0; i < s.queue.length; i++) {
-        drawMiniPiece(ctx, s.queue[i] ?? -1, g.sideX + unit, g.wellY + unit * (6 + i * 3), unit);
+        drawMiniPiece(ctx, th, s.queue[i] ?? -1, g.sideX + unit, g.wellY + unit * (6 + i * 3), unit);
     }
 }
 function drawHud(ctx, s, th, g) {
@@ -281,9 +262,6 @@ export function createRenderer(opts) {
         throw new Error('createRenderer: canvas has no 2d context');
     let geo = computeGeometry(canvas, opts.layout, opts.chrome);
     let observer = null;
-    const anim = {
-        x: 0, y: 0, angle: 0, piece: -2, pieceSerial: -1, lastMs: 0,
-    };
     const callouts = [];
     const resize = () => {
         geo = computeGeometry(canvas, opts.layout, opts.chrome);
@@ -304,8 +282,7 @@ export function createRenderer(opts) {
         drawWell(ctx, th, g);
         drawLockedCells(ctx, s, th, g);
         drawGhost(ctx, s, th, g);
-        advanceAnimation(anim, s, t);
-        drawActivePiece(ctx, s, th, g, anim);
+        drawActivePiece(ctx, s, th, g);
         if (opts.chrome === 'full') {
             drawSide(ctx, s, th, g);
             drawHud(ctx, s, th, g);

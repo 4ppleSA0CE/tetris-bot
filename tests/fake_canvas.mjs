@@ -77,6 +77,13 @@ export const TEST_VARS = {
   '--bot-text': 'VAR_TEXT',
   '--bot-text-dim': 'VAR_TEXT_DIM',
   '--bot-accent': 'VAR_ACCENT',
+  '--bot-piece-i': 'VAR_PIECE_I',
+  '--bot-piece-j': 'VAR_PIECE_J',
+  '--bot-piece-l': 'VAR_PIECE_L',
+  '--bot-piece-o': 'VAR_PIECE_O',
+  '--bot-piece-s': 'VAR_PIECE_S',
+  '--bot-piece-t': 'VAR_PIECE_T',
+  '--bot-piece-z': 'VAR_PIECE_Z',
 };
 
 /** A hand-built Snapshot-shaped object; the renderer only reads, never mutates. */
@@ -84,8 +91,13 @@ export function fakeSnapshot(overrides = {}) {
   const rows = new Uint16Array(40);
   rows[0] = 0b0111111111;   // bottom row, one gap at column 9
   rows[1] = 0b0000000011;
+  // Which piece locked into each cell, parallel to rows. Two distinct pieces so a
+  // test can tell the board is painted per piece and not with one flat colour.
+  const cellPiece = new Uint8Array(400).fill(255);
+  for (let x = 0; x < 9; x++) cellPiece[0 * 10 + x] = 0;   // I
+  for (let x = 0; x < 2; x++) cellPiece[1 * 10 + x] = 6;   // Z
   return {
-    frame: 1, rows,
+    frame: 1, rows, cellPiece,
     activePiece: 5, activeRot: 0, activeX: 4, activeY: 12, ghostY: 3,
     pendingSpin: 0, pathProgress: 0, holdPiece: 3,
     queue: Int8Array.from([0, 1, 2, 4, 6]),

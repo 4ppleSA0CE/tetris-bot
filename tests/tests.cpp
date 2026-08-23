@@ -2365,7 +2365,7 @@ static void test_snapshot_layout() {
     assert(offsetof(Event, param) == 1);
     assert(offsetof(Event, frame) == 2);
 
-    assert(sizeof(Snapshot)  == 156);
+    assert(sizeof(Snapshot)  == 556);
     assert(alignof(Snapshot) == 4);
     assert(offsetof(Snapshot, frame)        ==   0);
     assert(offsetof(Snapshot, rows)         ==   4);
@@ -2387,6 +2387,8 @@ static void test_snapshot_layout() {
     assert(offsetof(Snapshot, comboCount)   == 146);
     assert(offsetof(Snapshot, pps)          == 148);
     assert(offsetof(Snapshot, state)        == 152);
+    assert(offsetof(Snapshot, cellPiece)    == 153);
+    assert(sizeof(Snapshot::cellPiece)      == 400);
 }
 
 // ---------------------------------------------------------------------------
@@ -2463,34 +2465,43 @@ static void test_bot_instance_path_replay() {
 }
 
 // ---------------------------------------------------------------------------
-// Tempo dilation: a placement whose path terminates in a spin must occupy at
-// least DILATION_MS of wall clock even at the maximum configured speed.
+// Pacing is UNIFORM. Every placement occupies exactly one piece interval whether
+// or not it is a spin. This replaces the old tempo-dilation test: dilation was
+// removed because the reference handling does not have it, and this asserts the
+// removal stayed removed rather than silently coming back.
 // ---------------------------------------------------------------------------
-static void test_tempo_dilation() {
-    tb::BotInstance bot(42, 20.0f, 4, 60);
+static void test_uniform_pacing() {
+    tb::BotInstance bot(42, 20.0f, 4, 60);          // 20 pps -> 50 ms per placement
     const tb::Snapshot* s = bot.snapshotPtr();
-    double spinStart = -1.0;
-    uint32_t spinPieces = 0;
-    double longest = 0.0;
-    bool sawSpin = false;
-    int spins = 0;
-    for (int f = 1; f <= 3600; ++f) {           // 60s of simulated 60fps, ~900 pieces
-        double now = f * 16.6667;
+    double pieceStart = 0.0;
+    uint32_t serial = 0;
+    bool sawSpinPiece = false, spinThisPiece = false;
+    double longestSpin = 0.0, longestPlain = 0.0;
+    int spins = 0, plains = 0;
+
+    for (int f = 1; f <= 3600; ++f) {               // 60s of simulated 60fps
+        const double now = f * 16.6667;
         bot.tick(now);
-        if (spinStart < 0.0 && s->pendingSpin != 0) {
-            spinStart = now; spinPieces = s->piecesPlaced; sawSpin = true;
-        } else if (spinStart >= 0.0 && s->piecesPlaced != spinPieces) {
-            double dur = now - spinStart;
-            if (dur > longest) longest = dur;
-            assert(dur >= 190.0);   // 200ms tail minus one 16.7ms observation frame
-            ++spins;
-            spinStart = -1.0;
+        if (s->pendingSpin != 0) spinThisPiece = true;
+        if (s->piecesPlaced != serial) {
+            if (serial > 0) {
+                const double dur = now - pieceStart;
+                if (spinThisPiece) { ++spins; sawSpinPiece = true;
+                                     if (dur > longestSpin) longestSpin = dur; }
+                else               { ++plains;
+                                     if (dur > longestPlain) longestPlain = dur; }
+            }
+            serial = s->piecesPlaced;
+            pieceStart = now;
+            spinThisPiece = false;
         }
     }
-    std::printf("      tempo dilation: spins=%d longestSpinPiece=%.1fms\n",
-                spins, longest);
-    assert(sawSpin);                // the bot must actually spin - PRD section 11
-    assert(longest >= 190.0);
+    std::printf("      uniform pacing: %d spin / %d plain placements, longest %.1f / %.1f ms\n",
+                spins, plains, longestSpin, longestPlain);
+    assert(sawSpinPiece);              // the bot must actually spin, or this proves nothing
+    // 50 ms nominal; one 16.7 ms observation frame of slack on either side.
+    assert(longestSpin  <= 70.0);      // a dilated spin would be 200+ ms
+    assert(longestPlain <= 70.0);
 }
 
 // ---------------------------------------------------------------------------
@@ -2670,7 +2681,7 @@ int main() {
     RUN(test_snapshot_layout);
     RUN(test_weight_table);
     RUN(test_bot_instance_path_replay);
-    RUN(test_tempo_dilation);
+    RUN(test_uniform_pacing);
     RUN(test_game_bot_instance_parity);
     std::printf("all %d tests passed\n", g_testCount);
     return 0;

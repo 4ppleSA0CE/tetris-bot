@@ -41,6 +41,7 @@ export declare class SnapshotView implements Snapshot {
     private dv;
     private rowsView;
     private queueView;
+    private cellPieceView;
     private readonly eventBuf;
     /** Diagnostics: how many times the views have been rebuilt. Starts at 1. */
     rebinds: number;
@@ -64,6 +65,7 @@ export declare class SnapshotView implements Snapshot {
     get pathProgress(): number;
     get holdPiece(): number;
     get queue(): Int8Array;
+    get cellPiece(): Uint8Array;
     get piecesPlaced(): number;
     get linesCleared(): number;
     get attackSent(): number;
