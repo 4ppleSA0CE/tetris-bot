@@ -479,7 +479,7 @@ static int runRandomMode(uint32_t seed, int pieces, bool doPrint, bool doStats) 
         std::printf("%-12s%5u\n", "pieces", st.pieces);
         std::printf("%-12s%5u\n", "lines", st.lines);
         std::printf("%-12s%5u\n", "attack", st.attack);
-        std::printf("%-12s%5u   (%.2f / 100)\n", "t-spins", st.tspins, tspinRate);
+        std::printf("%-12s%5u   (%.2f / 100)\n", "spins", st.tspins, tspinRate);
         std::printf("%-12s%5u\n", "max b2b", st.maxB2b);
         std::printf("%-12s%5u\n", "top-outs", st.topouts);
     }
@@ -599,7 +599,7 @@ int main(int argc, char** argv) {
         std::printf("%-12s%5u\n", "pieces", totalPieces);
         std::printf("%-12s%5u\n", "lines",  totalLines);
         std::printf("%-12s%5u\n", "attack", totalAttack);
-        std::printf("%-12s%5u   (%.2f / 100)\n", "t-spins", totalTspins, rate);
+        std::printf("%-12s%5u   (%.2f / 100)\n", "spins", totalTspins, rate);
         std::printf("%-12s%5u\n", "max b2b", static_cast<unsigned>(maxB2b));
         std::printf("%-12s%5u\n", "top-outs", topOuts);
         std::printf("%-12sp50 %.1f  p99 %.1f\n", "search ms", pct(0.50), pct(0.99));
