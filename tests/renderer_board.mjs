@@ -56,6 +56,31 @@ const accentUse = ops.filter((o) =>
 assert.equal(accentUse.length, 0,
   `--bot-accent used on ${accentUse.length} ops outside a callout: ${JSON.stringify(accentUse.slice(0, 3))}`);
 
+// --- the well clips the active piece -----------------------------------------
+// The piece SPAWNS at row 21, above the visible field, and roughly a fifth of all
+// frames during real play have at least one of its cells up there. Anything drawn
+// at those rows lands outside the well's top border, floating in the page.
+const activeCellsAt = (y) => {
+  const c = makeCanvas(360, 720, TEST_VARS);
+  const rr = createRenderer({ canvas: c, layout: 'demo', chrome: 'full' });
+  rr.resize();
+  rr.draw(fakeSnapshot({ activeY: y, activeRot: 0, piecesPlaced: 7 }));
+  rr.destroy();
+  return c.ops.filter((o) => o.op === 'fillRect' && o.fillStyle === TEST_VARS['--bot-cell-active']).length;
+};
+// Expected count comes from the piece table, not from hardcoded geometry.
+const T_CELLS = JSON.parse(mod.getPieceCells())[5][0];
+const inWell = (y) => {
+  let n = 0;
+  for (let i = 1; i < T_CELLS.length; i += 2) { const r = y + T_CELLS[i]; if (r >= 0 && r < 20) n++; }
+  return n;
+};
+for (const y of [21, 20, 19, 12, 0]) {
+  assert.equal(activeCellsAt(y), inWell(y),
+    `active piece at row ${y}: drew ${activeCellsAt(y)} cells, only ${inWell(y)} are inside the well`);
+}
+assert.equal(activeCellsAt(21), 0, 'a piece parked at the spawn row must paint nothing inside the well');
+
 // chrome: 'none' draws no text at all.
 const bare = makeCanvas(360, 720, TEST_VARS);
 const r2 = createRenderer({ canvas: bare, layout: 'sidebar', chrome: 'none' });

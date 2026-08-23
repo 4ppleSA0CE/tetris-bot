@@ -250,6 +250,12 @@ function drawActivePiece(
   for (let i = 0; i < cells.length; i += 2) {
     const dx = cells[i] ?? 0;
     const dy = cells[i + 1] ?? 0;
+    // Clip to the visible well, exactly as drawGhost does. The piece spawns at
+    // row 21 - above the field - and about a fifth of all frames have at least one
+    // cell up there, so without this the piece is painted floating above the well's
+    // top border. The test for this is in tests/renderer_board.mjs.
+    const row = s.activeY + dy;
+    if (row < 0 || row >= VISIBLE_ROWS) continue;
     ctx.fillRect(dx * g.cell - size / 2, -dy * g.cell - size / 2, size, size);
   }
   ctx.restore();
