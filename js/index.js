@@ -78,7 +78,8 @@ export async function createTetrisBot(config = {}) {
         }
     }
     const view = new SnapshotView(mod, mod.botSnapshotPtr(handle), layout, structSize);
-    const reducedMotion = prefersReducedMotion();
+    // config.ignoreReducedMotion is a deliberate per-instance opt-out; see js/types.ts.
+    const reducedMotion = prefersReducedMotion() && config.ignoreReducedMotion !== true;
     if (reducedMotion) {
         // One static board, settled up front, then no motion ever.
         for (let i = 1; i <= REDUCED_MOTION_TICKS; i++) {

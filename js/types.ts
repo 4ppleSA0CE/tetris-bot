@@ -91,6 +91,18 @@ export interface BotConfig {
   /** default 100 */
   beamWidth?: number;
   weights?: Partial<Weights>;
+  /**
+   * Animate even when the OS asks for reduced motion. Default false, i.e. the OS
+   * preference wins and the bot settles one static board and then holds still.
+   *
+   * ACCESSIBILITY: this is an opt-out for a page AUTHOR who wants to watch or
+   * screen-record the bot on their own machine without changing a system-wide
+   * accessibility setting - the demo page exposes it as `?motion=1`. Do not set it
+   * on a page you ship to other people. `prefers-reduced-motion: reduce` is a
+   * stated user need, and an endlessly looping animation is precisely what it asks
+   * you to suppress; honouring it is why the default is what it is.
+   */
+  ignoreReducedMotion?: boolean;
 }
 
 export interface TetrisBot {

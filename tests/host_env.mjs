@@ -19,9 +19,23 @@ assert.equal(frozen.snapshot().piecesPlaced, settled,
   'tick() advanced the simulation under prefers-reduced-motion');
 frozen.destroy();
 
+// --- explicit opt-out, for a page author who wants to watch or record it -----
+// Same OS preference still reporting `reduce`; only this one bot ignores it.
+const moving = await createTetrisBot({ seed: 42, pps: 5, ignoreReducedMotion: true });
+assert.equal(moving.snapshot().piecesPlaced, 0,
+  'ignoreReducedMotion must skip the settle-a-static-board step, not just unfreeze after it');
+let mt = 0;
+for (let i = 1; i <= 600; i++) { mt += 16.7; moving.tick(mt); }
+const moved = moving.snapshot().piecesPlaced;
+assert.ok(moved >= 40, `override ticked only ${moved} pieces in 10s at 5 pps`);
+moving.destroy();
+
+// The default is unchanged: absent the flag, the OS preference still wins.
+assert.equal(prefersReducedMotion(), true, 'the OS preference must still report reduce');
+
 // --- viewport check ---------------------------------------------------------
 assert.equal(isViewportBelow(768), false, '1440px reported as below 768px');
 globalThis.window.innerWidth = 500;
 assert.equal(isViewportBelow(768), true, '500px not reported as below 768px');
 
-console.log(`host env OK: reduced motion froze at ${settled} pieces, viewport check works`);
+console.log(`host env OK: reduced motion froze at ${settled} pieces, override ran ${moved}, viewport check works`);
