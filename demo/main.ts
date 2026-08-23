@@ -38,9 +38,15 @@ if (prefersReducedMotion() && !ignoreReducedMotion) {
 }
 
 let raf = 0;
+let restarts = 0;
 const loop = (t: number): void => {
   bot.tick(t);
-  renderer.draw(bot.snapshot());
+  const snap = bot.snapshot();
+  // A top-out is rare but TERMINAL: the core stops advancing and the page would sit
+  // on a dead board forever. The portfolio's attract loop restarts on game over and
+  // this does the same, on a fresh seed so it does not replay the game it just lost.
+  if (snap.state === 2) bot.reset(DEMO_SEED + ++restarts);
+  renderer.draw(snap);
   raf = requestAnimationFrame(loop);
 };
 raf = requestAnimationFrame(loop);
