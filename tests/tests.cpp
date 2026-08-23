@@ -1993,7 +1993,7 @@ static void test_search_empty_board() {
     // failing the requirement by construction rather than by being slow. Aiming 0.2 ms
     // low absorbs the overshoot: measured p99 4.850 ms. Kept as an assertion because the
     // WASM layer in milestone 4 inherits this default and the frame budget depends on it.
-    assert(std::fabs(cfg.timeBudgetMs - 4.8f) < 1e-6f);
+    assert(std::fabs(cfg.timeBudgetMs - 4.5f) < 1e-6f);
 
     tb::SearchResult r = tb::search(b, tb::PIECE_T, tb::PIECE_NONE, queue,
                                     tb::PREVIEW_LEN, false, 0, cfg);
@@ -2629,6 +2629,42 @@ static void test_all_spin_immobile() {
            == classifyTSpin(tb_, ROT_0, 3, 1, true, 0));
 }
 
+// ---------------------------------------------------------------------------
+// A STARVED SEARCH MUST STILL PICK A PROPERLY EVALUATED MOVE. The root level is
+// never interrupted by the clock, so a search whose budget is already blown still
+// sweeps every root placement -- and must therefore return exactly what a full
+// depth-1 search returns. Before this, an interrupted root left the answer as the
+// best of whatever handful of placements happened to be enumerated first, which is
+// how the bot topped out on a loaded machine.
+// ---------------------------------------------------------------------------
+static void test_starved_search_still_sweeps_the_root() {
+    tb::Board b{};
+    b.rows[0] = 0b0011111111;
+    b.rows[1] = 0b0000111111;
+    b.rows[2] = 0b0000000111;
+
+    const tb::PieceType queue[5] = { tb::PIECE_I, tb::PIECE_O, tb::PIECE_S,
+                                     tb::PIECE_L, tb::PIECE_J };
+
+    tb::SearchConfig starved;
+    starved.depth = 5; starved.beamWidth = 100; starved.timeBudgetMs = 0.0f;
+
+    tb::SearchConfig oneDeep;
+    oneDeep.depth = 1; oneDeep.beamWidth = 100; oneDeep.timeBudgetMs = 1.0e9f;
+
+    for (int pi = 0; pi < tb::NUM_PIECES; ++pi) {
+        const tb::PieceType p = static_cast<tb::PieceType>(pi);
+        const tb::SearchResult a = tb::search(b, p, tb::PIECE_NONE, queue, 5, false, 0, starved);
+        const tb::SearchResult c = tb::search(b, p, tb::PIECE_NONE, queue, 5, false, 0, oneDeep);
+        assert(a.valid);
+        assert(c.valid);
+        assert(a.useHold == c.useHold);
+        assert(a.placement.x == c.placement.x);
+        assert(a.placement.y == c.placement.y);
+        assert(a.placement.rot == c.placement.rot);
+    }
+}
+
 int main() {
     RUN(test_types_constants);
     RUN(test_piece_cells_spawn_shapes);
@@ -2737,6 +2773,7 @@ int main() {
     RUN(test_weight_table);
     RUN(test_bot_instance_path_replay);
     RUN(test_all_spin_immobile);
+    RUN(test_starved_search_still_sweeps_the_root);
     RUN(test_uniform_pacing);
     RUN(test_game_bot_instance_parity);
     std::printf("all %d tests passed\n", g_testCount);

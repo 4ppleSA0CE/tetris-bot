@@ -209,8 +209,14 @@ SearchResult search(const Board& b, PieceType current, PieceType hold,
                         std::push_heap(next, next + nextCount, WorseFirst{});
                     }
 
-                    // CLOCK CHECK 2 of 2: every 64 scored children.
-                    if ((scored & CLOCK_CHECK_MASK) == 0 && elapsedMs(t0) > budgetMs) {
+                    // CLOCK CHECK 2 of 2: every 32 scored children, and NEVER at
+                    // depth 0. Interrupting the root level leaves the answer as the
+                    // best of however many placements happened to be enumerated
+                    // first, which is close to arbitrary and is how a starved search
+                    // tops the bot out. A complete root sweep costs ~2 generateMoves
+                    // plus <=256 feature extractions - about 0.15 ms against a 4.8 ms
+                    // budget - so finishing it is affordable even when already over.
+                    if (d > 0 && (scored & CLOCK_CHECK_MASK) == 0 && elapsedMs(t0) > budgetMs) {
                         outOfTime = true;
                         break;
                     }

@@ -15,7 +15,7 @@ struct SearchConfig {
     // p99 = 5.045 ms with a 5.0 budget, which fails the requirement by construction
     // rather than by being slow. Aiming 0.2 ms low absorbs the overshoot so real
     // completion time lands under the limit.
-    float timeBudgetMs = 4.8f;
+    float timeBudgetMs = 4.5f;
     Weights weights  = defaultWeights();
 };
 
