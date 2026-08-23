@@ -3,6 +3,7 @@
 
 #include <cstring>
 
+#include "core/board.h"
 #include "core/piece.h"
 #include "core/srs.h"
 
@@ -19,6 +20,16 @@ bool mgCellOccupied(const Board& b, int x, int y) {
     if (y < 0) return true;                    // floor
     if (y >= BOARD_H) return false;            // above the well is empty
     return ((b.rows[y] >> x) & 1u) != 0u;
+}
+
+// A piece with nowhere left to go: it cannot step left, right, or down from where
+// it came to rest. This is the "immobile" rule that all-spin uses for J/L/S/Z, and
+// it is intentionally shape-agnostic - there is no per-piece corner table for the
+// non-T pieces the way there is for T.
+bool isImmobile(const Board& b, PieceType p, Rot r, int x, int y) {
+    return collides(b, p, r, x - 1, y)
+        && collides(b, p, r, x + 1, y)
+        && collides(b, p, r, x, y - 1);   // y increases upward, so y-1 is down
 }
 
 SpinKind classifyTSpin(const Board& b, Rot r, int x, int y,
@@ -66,6 +77,22 @@ SpinKind classifyTSpin(const Board& b, Rot r, int x, int y,
 
     // 5.
     return SPIN_MINI;
+}
+
+// All-spin classification (portfolio parity: components/tetris/engine/engine.ts).
+//   T          -> the 3-corner + front-pair rule above, which alone distinguishes
+//                 MINI from FULL. T is the only piece with a mini.
+//   J, L, S, Z -> immobile after a rotation is a full spin.
+//   I, O       -> never spin. Excluded deliberately, not by oversight: an immobile
+//                 I or O is a hole the stack happened to close around, not a spin
+//                 anyone placed, and counting it would hand the bot free back-to-back.
+// Every branch still requires the last successful action to have been a rotation.
+SpinKind classifySpin(const Board& b, PieceType p, Rot r, int x, int y,
+                      bool lastWasRotation, uint8_t kickIndex) {
+    if (p == PIECE_T) return classifyTSpin(b, r, x, y, lastWasRotation, kickIndex);
+    if (p == PIECE_I || p == PIECE_O) return SPIN_NONE;
+    if (!lastWasRotation) return SPIN_NONE;
+    return isImmobile(b, p, r, x, y) ? SPIN_FULL : SPIN_NONE;
 }
 
 // ---------------------------------------------------------------------------
@@ -282,9 +309,7 @@ void generateMoves(const Board& b, PieceType p, MoveList* out) {
         pl.kickIndex = kick;
         pl.pathLen = static_cast<uint8_t>(len);
         for (int k = 0; k < len; ++k) pl.path[k] = buf[k];
-        pl.spin = (p == PIECE_T)
-                      ? classifyTSpin(b, sr, sx, sy, lastRot, kick)
-                      : SPIN_NONE;
+        pl.spin = classifySpin(b, p, sr, sx, sy, lastRot, kick);
     }
 }
 

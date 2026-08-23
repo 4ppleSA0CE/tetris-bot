@@ -112,6 +112,14 @@ void generateMoves(const Board& b, PieceType p, MoveList* out);
 SpinKind classifyTSpin(const Board& b, Rot r, int x, int y,
                        bool lastWasRotation, uint8_t kickIndex);
 
+// All-spin classification for every piece. T defers to classifyTSpin; J/L/S/Z use
+// the immobile rule; I and O never spin. Exposed for tests.
+SpinKind classifySpin(const Board& b, PieceType p, Rot r, int x, int y,
+                      bool lastWasRotation, uint8_t kickIndex);
+
+// True when the piece cannot step left, right, or down from (x, y).
+bool isImmobile(const Board& b, PieceType p, Rot r, int x, int y);
+
 // Walls (x < 0, x > 9) and the floor (y < 0) count as OCCUPIED.
 // Cells above the well (y >= BOARD_H) count as EMPTY. This is modern-guideline
 // behaviour and it is what makes the 3-corner test give the right answer at the
