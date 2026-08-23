@@ -10,6 +10,8 @@ npm install && npm run demo      # http://localhost:5173
 
 **It is scored on attack value, not survival or line count.** There is no opponent — the evaluator scores each placement by the garbage it *would* send in a versus match. Under a survival or line-count objective a correct bot stacks flat at three rows and never T-spins, because in solo a T-spin double is strictly worse than a tetris. It would be optimal and completely boring. Under an attack objective the bot builds T-slots, holds back-to-back chains, and clears in bursts, so the stack climbs to 8–12 rows, collapses, and climbs again.
 
+**Spins count for every piece that can make one.** T uses the classic three-corner rule; J, L, S and Z use the *immobility* rule — a piece that cannot step left, right or down after a rotation has spun. I and O are excluded on purpose: an immobile I is a hole the stack happened to close around, not a spin anyone placed, and counting it would hand the bot free back-to-back. Since every spin is a difficult clear, all-spin is what lets the chain actually run: switching it on moved attack from 3,813 to 10,267 and the longest back-to-back from 7 to 78 over 10,000 pieces, with no weight change at all.
+
 **Move generation is a BFS over the movement graph, not an enumeration of hard drops.** A T-spin placement is by definition one you cannot arrive at by dropping a piece straight down. Enumerating `(rotation, column)` pairs is faster and easier and makes T-spins literally unreachable, no matter how good the evaluator is. The BFS also hands the renderer the exact action sequence the piece took, which is why the on-screen slides, rotations, and wall kicks are real rather than synthesized.
 
 ## Architecture
