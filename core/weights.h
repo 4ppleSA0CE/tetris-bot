@@ -53,6 +53,24 @@ namespace tb {
 // for anything that must reflect shipped behaviour, leave --budget alone.
 // ============================================================================
 
+
+// RETUNED FOR ALL-SPIN (2026-08-23). J/L/S/Z now spin by the immobile rule, which
+// multiplied the available back-to-back material: attack 3813 -> 10267 and max b2b
+// 7 -> 78 over 10000 pieces on seed 1, with no weight change at all. The pair below
+// was then re-swept against that, 10 seeds x 3000 pieces at the shipped budget:
+//
+//   maxHeight  heightPenalty  top-outs  attack  max b2b  max height
+//          16            -60         1   29584       75          21   <- previous
+//          10           -120         0   30032       77          18   <- SHIPPED
+//           6           -200         0   29715       63          15
+//          16           -200         0   29375       63          17
+//
+// The shipped pair dominates the previous one on every axis at once: it tops out
+// less, attacks more, chains longer, and keeps 2 more rows of headroom under the
+// ceiling. That is not a trade-off resolved by taste - the old pair was simply
+// mistuned for a board where only T could spin. The previous pair's max height of
+// 21 IS its top-out: it reached the ceiling.
+
 // Height above which heightPenalty starts to bite (PRD 4.8, shared contract core/eval.h).
 constexpr int HEIGHT_PENALTY_THRESHOLD = 12;
 
@@ -100,7 +118,7 @@ constexpr float W_BUMPINESS = -4.0f;
 // height 7.5, under the band); +10 with the cliff at -4 (avg height 8.3-8.7, in band, but
 // tops out 0-4 times per 10000 depending on wall-clock luck -- not reliably 0).
 // This value only works paired with the much harder cliff below.
-constexpr float W_MAX_HEIGHT = 16.0f;
+constexpr float W_MAX_HEIGHT = 10.0f;
 
 // Applied to e*e where e = max(0, maxHeight - 12). The cliff that bounds W_MAX_HEIGHT's
 // reward -- these two are a MATCHED PAIR and must be changed together. Raising the reward
@@ -115,7 +133,7 @@ constexpr float W_MAX_HEIGHT = 16.0f;
 // 0-4 times per 10000); -25 and -50 paired with a +13 reward (both work, marginally lower
 // attack); a raised cliff alone with maxHeight at +10 (survives, but avg height 7.6-7.9,
 // under the band).
-constexpr float W_HEIGHT_PENALTY = -60.0f;
+constexpr float W_HEIGHT_PENALTY = -120.0f;
 
 // Surface roughness. Only the DIFFERENCE between candidate placements matters (2-6, i.e.
 // 0.1-0.4 attack). Halved with the board-health block.
