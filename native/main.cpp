@@ -56,7 +56,7 @@ void usage() {
     std::fprintf(stderr,
                  "usage: tetris_bot [--seed N] [--pieces N] [--stats] [--json] [--print]\n"
                  "                  [--depth N] [--width N] [--budget MS] [--heights]\n"
-                 "                  [--weights name=value,...]\n"
+                 "                  [--weights name=value,...] [--garbage L/P] [--messiness F]\n"
                  "       tetris_bot --random [--seed N] [--pieces N] [--print] [--stats]\n"
                  "       tetris_bot --movegen <fixture|all>\n"
                  "       tetris_bot --movegen-bench [iters]\n"
@@ -497,6 +497,8 @@ int main(int argc, char** argv) {
     uint32_t seed   = 1;
     int      pieces = 100;
     bool     stats = false, print = false, heights = false, randomMode = false, json = false;
+    int      garbageLines = 0, garbageEvery = 0;
+    float    messiness = 0.05f;
     tb::SearchConfig cfg;
 
     for (int i = 1; i < argc; ++i) {
@@ -518,6 +520,18 @@ int main(int argc, char** argv) {
         else if (!std::strcmp(a, "--weights")) { if (!applyWeightSpec(cfg.weights, need("--weights"))) return 2; }
         else if (!std::strcmp(a, "--stats"))   stats = true;
         else if (!std::strcmp(a, "--json"))    json = true;
+        else if (!std::strcmp(a, "--garbage")) {
+            // "L/P": queue L garbage lines every P pieces.
+            const char* spec = need("--garbage");
+            const char* slash = std::strchr(spec, '/');
+            if (slash == nullptr) { std::fprintf(stderr, "--garbage wants L/P: %s\n", spec); return 2; }
+            garbageLines = static_cast<int>(parseIntArg("--garbage lines", std::string(spec, slash).c_str(), 1, 20));
+            garbageEvery = static_cast<int>(parseIntArg("--garbage pieces", slash + 1, 1, 2147483647L));
+        }
+        else if (!std::strcmp(a, "--messiness")) {
+            messiness = parsePositiveFloatArg("--messiness", need("--messiness"));
+            if (messiness > 1.0f) { std::fprintf(stderr, "--messiness must be <= 1\n"); return 2; }
+        }
         else if (!std::strcmp(a, "--heights")) heights = true;
         else if (!std::strcmp(a, "--print"))   print = true;
         else if (!std::strcmp(a, "--random"))  randomMode = true;
@@ -534,18 +548,23 @@ int main(int argc, char** argv) {
     if (randomMode) return runRandomMode(seed, pieces, print, stats);
 
     tb::Game game(seed, cfg);
+    game.setMessiness(messiness);
 
     std::vector<float> times;
     times.reserve(static_cast<size_t>(pieces));
 
     uint32_t topOuts = 0;
     uint32_t basePieces = 0, baseLines = 0, baseAttack = 0, baseTspins = 0, baseSurge = 0;
+    uint32_t baseGarbage = 0;
     uint16_t maxB2b = 0;
     double   hSum = 0.0, hSumSq = 0.0;
     int      hMin = tb::BOARD_H + 1, hMax = 0;
 
     while (basePieces + game.piecesPlaced() < static_cast<uint32_t>(pieces)) {
         const uint32_t before = game.piecesPlaced();
+        if (garbageEvery > 0 && (basePieces + before) % static_cast<uint32_t>(garbageEvery) == 0
+            && basePieces + before > 0)
+            game.queueGarbage(garbageLines);
         game.stepPiece();
         if (game.piecesPlaced() != before) {
             times.push_back(game.lastSearchMs());
@@ -569,6 +588,7 @@ int main(int argc, char** argv) {
             baseAttack += game.attackSent();
             baseTspins += game.tSpinCount();
             baseSurge  += game.surgeSent();
+            baseGarbage += game.garbageReceived();
             game.reset(seed + topOuts);
         }
     }
@@ -578,6 +598,7 @@ int main(int argc, char** argv) {
     const uint32_t totalAttack = baseAttack + game.attackSent();
     const uint32_t totalTspins = baseTspins + game.tSpinCount();
     const uint32_t totalSurge  = baseSurge  + game.surgeSent();
+    const uint32_t totalGarbage = baseGarbage + game.garbageReceived();
 
     std::sort(times.begin(), times.end());
     auto pct = [&](double p) -> double {
@@ -601,6 +622,7 @@ int main(int argc, char** argv) {
         std::printf("%-12s%5u   (%.2f / 100)\n", "spins", totalTspins, rate);
         std::printf("%-12s%5u\n", "max b2b", static_cast<unsigned>(maxB2b));
         std::printf("%-12s%5u\n", "surge", totalSurge);
+        if (garbageEvery > 0) std::printf("%-12s%5u\n", "garbage", totalGarbage);
         std::printf("%-12s%5u\n", "top-outs", topOuts);
         std::printf("%-12sp50 %.1f  p99 %.1f\n", "search ms", pct(0.50), pct(0.99));
     }
@@ -618,7 +640,7 @@ int main(int argc, char** argv) {
                     "\"surge\":%u,\"topouts\":%u,\"garbage\":%u,\"p50\":%.3f,\"p99\":%.3f,"
                     "\"avgHeight\":%.3f,\"maxHeight\":%d}\n",
                     totalPieces, totalLines, totalAttack, totalTspins,
-                    static_cast<unsigned>(maxB2b), totalSurge, topOuts, 0u,
+                    static_cast<unsigned>(maxB2b), totalSurge, topOuts, totalGarbage,
                     pct(0.50), pct(0.99), hAvg, hMax);
     }
     return 0;
