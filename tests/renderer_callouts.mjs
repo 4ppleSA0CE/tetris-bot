@@ -76,3 +76,27 @@ assert.equal(bare.ops.filter((o) => o.op === 'fillText').length, 0,
 r.destroy();
 r2.destroy();
 console.log('renderer callouts OK: accent appears only in callout text');
+
+// All-mini+: a spin callout names the piece that locked (PIECE_LOCK param, same tick).
+const cSpin = makeCanvas(360, 720, TEST_VARS);
+const rSpin = createRenderer({ canvas: cSpin, layout: 'demo', chrome: 'full' });
+rSpin.resize();
+const accentOn = (c) => c.ops.filter(
+  (o) => o.op === 'fillText' && o.fillStyle === TEST_VARS['--bot-accent']).map((o) => o.args[0]);
+rSpin.draw(fakeSnapshot({ events: [
+  { type: EventType.PIECE_LOCK, param: 6, frame: 2 },
+  { type: EventType.TSPIN_MINI, param: 2, frame: 2 },
+] }));
+assert.ok(accentOn(cSpin).includes('Z-SPIN MINI'), `missing Z-SPIN MINI, got ${JSON.stringify(accentOn(cSpin))}`);
+
+// A B2B break shouts the Surge it released; a break with nothing charged is silent.
+cSpin.ops.length = 0;
+rSpin.draw(fakeSnapshot({ events: [{ type: EventType.B2B_BREAK, param: 7, frame: 3 }] }));
+assert.ok(accentOn(cSpin).includes('SURGE +7'), `missing SURGE +7, got ${JSON.stringify(accentOn(cSpin))}`);
+const cQuiet = makeCanvas(360, 720, TEST_VARS);
+const rQuiet = createRenderer({ canvas: cQuiet, layout: 'demo', chrome: 'full' });
+rQuiet.resize();
+rQuiet.draw(fakeSnapshot({ events: [{ type: EventType.B2B_BREAK, param: 0, frame: 4 }] }));
+assert.equal(accentOn(cQuiet).length, 0, 'a B2B_BREAK with no Surge must not shout');
+
+console.log('renderer callouts OK: piece-lettered spins and SURGE');

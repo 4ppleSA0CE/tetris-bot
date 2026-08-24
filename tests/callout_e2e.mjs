@@ -4,19 +4,20 @@ import assert from 'node:assert/strict';
 import { installDom, makeCanvas, TEST_VARS } from './fake_canvas.mjs';
 import { createTetrisBot, loadBotModule } from '../js/index.js';
 import { setPieceCells } from '../js/layout.js';
-import { EventType } from '../js/types.js';
+import { EventType, PieceLetter } from '../js/types.js';
 
 installDom();
 const { mod } = await loadBotModule();
 setPieceCells(JSON.parse(mod.getPieceCells()));
 const { createRenderer } = await import('../renderers/canvas-mono.js');
 
+// Spin callouts are prefixed with the letter of the piece that locked (PIECE_LOCK param).
 const EXPECTED = {
   [EventType.TETRIS]: 'TETRIS',
-  [EventType.TSPIN_MINI]: 'T-SPIN MINI',
-  [EventType.TSPIN_SINGLE]: 'T-SPIN SINGLE',
-  [EventType.TSPIN_DOUBLE]: 'T-SPIN DOUBLE',
-  [EventType.TSPIN_TRIPLE]: 'T-SPIN TRIPLE',
+  [EventType.TSPIN_MINI]: '-SPIN MINI',
+  [EventType.TSPIN_SINGLE]: '-SPIN SINGLE',
+  [EventType.TSPIN_DOUBLE]: '-SPIN DOUBLE',
+  [EventType.TSPIN_TRIPLE]: '-SPIN TRIPLE',
 };
 
 const canvas = makeCanvas(360, 720, TEST_VARS);
@@ -30,6 +31,7 @@ let t = 0;
 let shouted = null;
 let shoutedDrawn = null;
 let sawLock = false;
+let lockPiece = -1;
 let b2bChecks = 0;
 
 // Run PAST the first shout. B2B_EXTEND only fires on the SECOND difficult clear,
@@ -66,7 +68,10 @@ for (let f = 0; f < 36000; f++) {
       assert.equal(others.length, 0,
         `LINE_CLEAR fired alongside ${JSON.stringify(others)} — clear events must be exclusive`);
     }
-    if (EXPECTED[ev.type] !== undefined && shouted === null) shouted = EXPECTED[ev.type];
+    if (ev.type === EventType.PIECE_LOCK) lockPiece = ev.param;
+    if (EXPECTED[ev.type] !== undefined && shouted === null) {
+      shouted = ev.type === EventType.TETRIS ? EXPECTED[ev.type] : PieceLetter[lockPiece] + EXPECTED[ev.type];
+    }
   }
 
   const shoutingThisFrame = shouted !== null && shoutedDrawn === null;
