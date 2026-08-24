@@ -88,4 +88,10 @@ constexpr float W_OVERHANGS = 8.9f;
 constexpr float W_PLAIN_CLEAR = -114.7f;
 constexpr float W_WASTED_T    = -109.4f;
 
+// Times the extra height-cliff area pending garbage would add if it rose right now (plan 7).
+// Deliberately much softer than W_HEIGHT_PENALTY: charging the full cliff for garbage that
+// has not landed yet made the bot flatten, break its chain and DIE MORE (bench: 25 top-outs
+// vs 9 at 8x3000 under 4/16). Refined by the plan-7 tune.
+constexpr float W_INCOMING_RISK = -30.0f;
+
 } // namespace tb

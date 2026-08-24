@@ -40,6 +40,7 @@ struct Weights {
     // Move terms, applied per placement by the search like attackDealt, never by evaluate().
     float plainClear;         // per clear that is not b2bMaintaining (breaks or wastes the chain)
     float wastedT;            // per T placed without a spin
+    float incomingRisk;       // times the EXTRA cliff area pending garbage adds (see evaluate)
 };
 
 Weights defaultWeights();
@@ -47,9 +48,10 @@ Weights defaultWeights();
 // Terminal board evaluation. Weights carry their own sign, so this is a plain dot product.
 // attackDealt, plainClear and wastedT are NOT applied here: they are applied per node by the
 // search, discounted by gamma to the depth of the placement that earned them (PRD 4.5).
-// pendingRise = incoming garbage lines not yet cancelled on this path: the height cliff is
-// charged as if they had already risen under the stack (heightPenalty only - never the
-// positive maxHeight build reward, which would pay the bot for being under attack).
+// pendingRise = incoming garbage lines not yet cancelled on this path. It is charged through
+// its OWN weight, incomingRisk, times the extra cliff area: (e_with_rise^2 - e^2) where
+// e = max(0, maxHeight - threshold). heightPenalty keeps its solo meaning untouched, and a
+// rise of 0 contributes exactly nothing; never the positive maxHeight build reward.
 float evaluate(const Board& b, const Weights& w, int b2bCount, int pendingRise = 0);
 
 int countTSlots(const Board& b);

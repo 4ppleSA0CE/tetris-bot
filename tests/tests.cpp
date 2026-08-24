@@ -1989,6 +1989,7 @@ static void test_eval_dot_product() {
     ones.b2bActive = 1.0f; ones.b2bCharge = 1.0f; ones.attackDealt = 1.0f;
     ones.rowsWithHoles = 1.0f; ones.overhangs = 1.0f;
     ones.plainClear = 1.0f; ones.wastedT = 1.0f;   // move terms: applied by the search, not here
+    ones.incomingRisk = 1.0f;
 
     // FIX_B: holes 3 + covered 5 + bumpiness 4 + maxHeight 4 + heightPenalty 0
     //      + rowTransitions 12 + columnTransitions 12 + wellDepth 0 + tSlots 0
@@ -2001,8 +2002,8 @@ static void test_eval_dot_product() {
     assert(std::fabs(tb::evaluate(b, ones, 4) - 44.0f) < 1e-3f);
     assert(std::fabs(tb::evaluate(b, ones, 5) - 48.0f) < 1e-3f);
 
-    // pendingRise charges the height cliff as if the garbage had already risen: fixB has
-    // maxHeight 4, so rise 8 still clears the threshold (12), rise 9 is one over, rise 10 two.
+    // pendingRise charges incomingRisk with the EXTRA cliff area: fixB has maxHeight 4, so
+    // rise 8 still clears the threshold (12), rise 9 is one over, rise 10 two.
     assert(std::fabs(tb::evaluate(b, ones, 0, 8) - 43.0f) < 1e-3f);
     assert(std::fabs(tb::evaluate(b, ones, 0, 9) - 44.0f) < 1e-3f);
     assert(std::fabs(tb::evaluate(b, ones, 0, 10) - 47.0f) < 1e-3f);
@@ -2026,6 +2027,9 @@ static void test_eval_dot_product() {
     assert(d.rowsWithHoles < 0.0f);
     assert(d.overhangs > 0.0f && d.overhangs < -d.holes);
     assert(d.plainClear < 0.0f && d.wastedT < 0.0f);
+    // Softer than the real cliff on purpose: charging heightPenalty itself for garbage that
+    // has not landed yet measurably increased deaths under pressure.
+    assert(d.incomingRisk < 0.0f && d.incomingRisk > d.heightPenalty);
     // The tuner flipped bumpiness (~+2: rowTransitions carries tidiness now) and wellDepth
     // (+3.5: an open well is worth paying for - Cold Clear ships the same sign).
     assert(d.bumpiness > 0.0f && d.wellDepth > 0.0f);
@@ -2057,7 +2061,7 @@ static void test_weight_by_name() {
     assert(!tb::setWeightByName(w, "tSlotCounts", 1.0f));
 
     // the name table is exhaustive and every listed name is settable
-    assert(tb::weightNameCount() == 16);
+    assert(tb::weightNameCount() == 17);
     for (int i = 0; i < tb::weightNameCount(); ++i) {
         assert(tb::setWeightByName(w, tb::weightName(i), 1.0f));
     }
@@ -2075,7 +2079,7 @@ static void test_weight_by_name() {
     assert(tb::setWeightByName(v, "wastedT", -77.0f));
     assert(std::fabs(tb::weightValue(v, 15) - (-77.0f)) < 1e-6f);
     assert(std::fabs(tb::weightValue(v, 0) - tb::defaultWeights().holes) < 1e-6f);
-    assert(tb::weightValue(v, -1) == 0.0f && tb::weightValue(v, 16) == 0.0f);
+    assert(tb::weightValue(v, -1) == 0.0f && tb::weightValue(v, 17) == 0.0f);
 }
 
 // ---- Plan 3: search --------------------------------------------------------
@@ -2286,8 +2290,8 @@ static void test_search_incoming_cancel() {
     cfg.timeBudgetMs = 1e9f;
     cfg.depth = 1;
     cfg.weights = tb::Weights{};
-    cfg.weights.heightPenalty = -100.0f;
-    cfg.weights.attackDealt   = -50.0f;
+    cfg.weights.incomingRisk = -100.0f;
+    cfg.weights.attackDealt  = -50.0f;
 
     auto linesOf = [&](const tb::SearchResult& r) {
         const tb::PieceType placed = r.useHold ? queue[0] : tb::PIECE_I;
@@ -2303,8 +2307,9 @@ static void test_search_incoming_cancel() {
     assert(r0.valid);
     assert(linesOf(r0) == 0);
 
-    // Six lines incoming: a non-clearing root is charged (height + 6 - 12)^2 >= 900, the quad
-    // cancels four of them and ducks under the threshold, costing only its -200 reward.
+    // Six lines incoming: a non-clearing root is charged incomingRisk times at least
+    // (height + 6 - 12)^2 = 900; the quad cancels four and ducks under the threshold,
+    // costing only its -200 reward.
     tb::SearchResult r6 = tb::search(b, tb::PIECE_I, tb::PIECE_NONE, queue,
                                      tb::PREVIEW_LEN, 0, 0, cfg, 6);
     assert(r6.valid);
@@ -2748,19 +2753,19 @@ static void test_snapshot_layout() {
 // the wrong feature through JS.
 // ---------------------------------------------------------------------------
 static void test_weight_table() {
-    assert(tb::weightNameCount() == 16);
-    static const char* expected[16] = {
+    assert(tb::weightNameCount() == 17);
+    static const char* expected[17] = {
         "holes", "coveredCells", "bumpiness", "maxHeight", "heightPenalty",
         "rowTransitions", "columnTransitions", "wellDepth", "tSlotCount",
         "b2bActive", "attackDealt", "b2bCharge", "rowsWithHoles", "overhangs",
-        "plainClear", "wastedT"
+        "plainClear", "wastedT", "incomingRisk"
     };
     for (int i = 0; i < tb::weightNameCount(); ++i) {
         assert(std::string(tb::weightName(i)) == expected[i]);
     }
     // core/eval.h's out-of-range contract is the empty string, NOT nullptr.
     assert(tb::weightName(-1)[0] == '\0');
-    assert(tb::weightName(16)[0] == '\0');
+    assert(tb::weightName(17)[0] == '\0');
 
     // The bridge and setWeightByName must agree, index for index.
     for (int i = 0; i < tb::weightNameCount(); ++i) {
@@ -2773,7 +2778,7 @@ static void test_weight_table() {
     }
     tb::Weights w = tb::defaultWeights();
     assert(tb::bindingsWeightSlot(w, -1) == nullptr);
-    assert(tb::bindingsWeightSlot(w, 16) == nullptr);
+    assert(tb::bindingsWeightSlot(w, 17) == nullptr);
     assert(tb::bindingsWeightSlot(w, 0) == &w.holes);        // spot-check the two ends
     assert(tb::bindingsWeightSlot(w, 10) == &w.attackDealt);
 }

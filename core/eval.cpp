@@ -72,18 +72,21 @@ Weights defaultWeights() {
     w.overhangs         = W_OVERHANGS;
     w.plainClear        = W_PLAIN_CLEAR;
     w.wastedT           = W_WASTED_T;
+    w.incomingRisk      = W_INCOMING_RISK;
     return w;
 }
 
 float evaluate(const Board& b, const Weights& w, int b2bCount, int pendingRise) {
     const Features f = extractFeatures(b);
-    int e = f.maxHeight + pendingRise - HEIGHT_PENALTY_THRESHOLD;
-    if (e < 0) e = 0;   // pendingRise == 0 reproduces f.heightPenalty exactly
+    int er = f.maxHeight + pendingRise - HEIGHT_PENALTY_THRESHOLD;
+    if (er < 0) er = 0;
+    const int extra = er * er - f.heightPenalty;   // 0 when pendingRise == 0
     return w.holes             * static_cast<float>(f.holes)
          + w.coveredCells      * static_cast<float>(f.coveredCells)
          + w.bumpiness         * static_cast<float>(f.bumpiness)
          + w.maxHeight         * static_cast<float>(f.maxHeight)
-         + w.heightPenalty     * static_cast<float>(e * e)
+         + w.heightPenalty     * static_cast<float>(f.heightPenalty)
+         + w.incomingRisk      * static_cast<float>(extra)
          + w.rowTransitions    * static_cast<float>(f.rowTransitions)
          + w.columnTransitions * static_cast<float>(f.columnTransitions)
          + w.wellDepth         * static_cast<float>(f.wellDepth)
@@ -188,6 +191,7 @@ const WeightEntry kWeightTable[] = {
     { "overhangs",         &Weights::overhangs },
     { "plainClear",        &Weights::plainClear },
     { "wastedT",           &Weights::wastedT },
+    { "incomingRisk",      &Weights::incomingRisk },
 };
 constexpr int kWeightCount = static_cast<int>(sizeof(kWeightTable) / sizeof(kWeightTable[0]));
 

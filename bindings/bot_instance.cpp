@@ -34,6 +34,7 @@ float* bindingsWeightSlot(Weights& w, int index) {
         case 13: return &w.overhangs;
         case 14: return &w.plainClear;
         case 15: return &w.wastedT;
+        case 16: return &w.incomingRisk;
         default: return nullptr;
     }
 }
