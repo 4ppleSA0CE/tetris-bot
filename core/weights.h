@@ -67,4 +67,11 @@ constexpr float W_B2B_ACTIVE = 150.0f;
 // horizon sees a break's payout but not the +1 per clear a held chain keeps earning.
 constexpr float W_B2B_CHARGE = 150.0f;
 
+// BCTS's strongest term (Thiery & Scherrer 2009): a second hole in an already-holed row is
+// nearly free, a hole in a clean row costs a whole row.
+constexpr float W_ROWS_WITH_HOLES = -40.0f;
+
+// Partial refund of W_HOLES for holes a piece can still slide into from the side.
+constexpr float W_OVERHANGS = 30.0f;
+
 } // namespace tb

@@ -68,6 +68,8 @@ Weights defaultWeights() {
     w.b2bActive         = W_B2B_ACTIVE;
     w.attackDealt       = W_ATTACK_DEALT;
     w.b2bCharge         = W_B2B_CHARGE;
+    w.rowsWithHoles     = W_ROWS_WITH_HOLES;
+    w.overhangs         = W_OVERHANGS;
     return w;
 }
 
@@ -82,6 +84,8 @@ float evaluate(const Board& b, const Weights& w, int b2bCount) {
          + w.columnTransitions * static_cast<float>(f.columnTransitions)
          + w.wellDepth         * static_cast<float>(f.wellDepth)
          + w.tSlotCount        * static_cast<float>(f.tSlotCount)
+         + w.rowsWithHoles     * static_cast<float>(f.rowsWithHoles)
+         + w.overhangs         * static_cast<float>(f.overhangs)
          + w.b2bActive         * (b2bCount > 0 ? 1.0f : 0.0f)
          + w.b2bCharge         * static_cast<float>(surgeCharge(b2bCount));
     // NOTE: w.attackDealt is intentionally absent. Attack is a per-move reward applied by
@@ -96,11 +100,16 @@ Features extractFeatures(const Board& b) {
 
     for (int c = 0; c < BOARD_W; ++c) if (h[c] > f.maxHeight) f.maxHeight = h[c];
 
+    uint64_t holeRows = 0;   // BOARD_H (40) rows fit
     for (int c = 0; c < BOARD_W; ++c) {
         for (int y = 0; y < h[c] - 1; ++y) {
-            if (!occ(b, c, y)) ++f.holes;
+            if (occ(b, c, y)) continue;
+            ++f.holes;
+            holeRows |= 1ull << y;
+            if ((c > 0 && h[c - 1] <= y) || (c + 1 < BOARD_W && h[c + 1] <= y)) ++f.overhangs;
         }
     }
+    for (int y = 0; y < BOARD_H; ++y) f.rowsWithHoles += static_cast<int>((holeRows >> y) & 1u);
 
     for (int c = 0; c < BOARD_W; ++c) {
         bool sawEmpty = false;
@@ -171,6 +180,8 @@ const WeightEntry kWeightTable[] = {
     { "b2bActive",         &Weights::b2bActive },
     { "attackDealt",       &Weights::attackDealt },
     { "b2bCharge",         &Weights::b2bCharge },
+    { "rowsWithHoles",     &Weights::rowsWithHoles },
+    { "overhangs",         &Weights::overhangs },
 };
 constexpr int kWeightCount = static_cast<int>(sizeof(kWeightTable) / sizeof(kWeightTable[0]));
 

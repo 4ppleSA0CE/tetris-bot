@@ -1905,6 +1905,40 @@ static void test_eval_well_depth() {
     assert(fw.holes == 0);
 }
 
+static void test_eval_rows_with_holes() {
+    // fixB: holes at y=0 (two of them) and y=2 -> two distinct rows
+    assert(tb::extractFeatures(fixB()).rowsWithHoles == 2);
+    assert(tb::extractFeatures(fixA()).rowsWithHoles == 0);
+    const char* rows[] = { "####......", "#..#......", "#.##......" };
+    tb::Features f = tb::extractFeatures(tb::boardFromAscii(rows, 3));
+    assert(f.holes == 3);
+    assert(f.rowsWithHoles == 2);
+    // rows above 15 are their own rows, not aliases of the bottom sixteen
+    tb::Board tall{};
+    tall.rows[18] = 0x1; tall.rows[2] = 0x1;   // holes at (0,0),(0,1),(0,3..17)
+    assert(tb::extractFeatures(tall).rowsWithHoles == 17);
+}
+
+static void test_eval_overhangs() {
+    // A hole is an overhang when a neighbouring column is open down to that row, so a
+    // piece can slide in sideways. Enclosed cavities are not.
+    const char* open[] = { "##........", "#........." };
+    tb::Features f = tb::extractFeatures(tb::boardFromAscii(open, 2));
+    assert(f.holes == 1);
+    assert(f.overhangs == 1);
+    const char* closed[] = { "###.......", "#.#......." };
+    f = tb::extractFeatures(tb::boardFromAscii(closed, 2));
+    assert(f.holes == 1);
+    assert(f.overhangs == 0);
+    // neighbour empty but roofed: not reachable from above, not an overhang
+    const char* roofed[] = { "####......", "#..#......", "#.##......" };
+    f = tb::extractFeatures(tb::boardFromAscii(roofed, 3));
+    assert(f.overhangs == 0);
+    // fixB: only the hole at (3,0) has an open neighbour (column 4 is empty)
+    assert(tb::extractFeatures(fixB()).overhangs == 1);
+    assert(tb::extractFeatures(tb::Board{}).overhangs == 0);
+}
+
 static void test_eval_t_slots() {
     // A clear T-slot: nub column 4 at y=0, bar at y=1 across columns 3..5,
     // overhang at (3,2). Diagonals filled: (3,0) (5,0) (3,2) -> 3 of 4.
@@ -1953,16 +1987,18 @@ static void test_eval_dot_product() {
     ones.maxHeight = 1.0f; ones.heightPenalty = 1.0f; ones.rowTransitions = 1.0f;
     ones.columnTransitions = 1.0f; ones.wellDepth = 1.0f; ones.tSlotCount = 1.0f;
     ones.b2bActive = 1.0f; ones.b2bCharge = 1.0f; ones.attackDealt = 1.0f;
+    ones.rowsWithHoles = 1.0f; ones.overhangs = 1.0f;
 
     // FIX_B: holes 3 + covered 5 + bumpiness 4 + maxHeight 4 + heightPenalty 0
-    //      + rowTransitions 12 + columnTransitions 12 + wellDepth 0 + tSlots 0 == 40
+    //      + rowTransitions 12 + columnTransitions 12 + wellDepth 0 + tSlots 0
+    //      + rowsWithHoles 2 + overhangs 1 == 43
     tb::Board b = fixB();
-    assert(std::fabs(tb::evaluate(b, ones, 0) - 40.0f) < 1e-3f);
+    assert(std::fabs(tb::evaluate(b, ones, 0) - 43.0f) < 1e-3f);
     // b2bActive adds one unit of its weight; b2bCharge adds surgeCharge(count) units;
     // attackDealt is NOT applied here
-    assert(std::fabs(tb::evaluate(b, ones, 1) - 41.0f) < 1e-3f);
-    assert(std::fabs(tb::evaluate(b, ones, 4) - 41.0f) < 1e-3f);
-    assert(std::fabs(tb::evaluate(b, ones, 5) - 45.0f) < 1e-3f);
+    assert(std::fabs(tb::evaluate(b, ones, 1) - 44.0f) < 1e-3f);
+    assert(std::fabs(tb::evaluate(b, ones, 4) - 44.0f) < 1e-3f);
+    assert(std::fabs(tb::evaluate(b, ones, 5) - 48.0f) < 1e-3f);
 
     // A single non-zero weight isolates a single feature.
     tb::Weights onlyHoles{};
@@ -1978,6 +2014,10 @@ static void test_eval_dot_product() {
     assert(d.heightPenalty < 0.0f && d.wellDepth < 0.0f);
     assert(d.rowTransitions < 0.0f && d.columnTransitions < 0.0f);
     assert(d.tSlotCount > 0.0f && d.b2bActive > 0.0f && d.b2bCharge > 0.0f && d.attackDealt > 0.0f);
+    // overhangs is a partial refund of holes (side-reachable ones are cheap to fix), so it is
+    // positive but never outweighs holes itself.
+    assert(d.rowsWithHoles < 0.0f);
+    assert(d.overhangs > 0.0f && d.overhangs < -d.holes);
 
     // maxHeight is the ONE deliberate exception, and it is asserted positive rather than
     // simply dropped from the check -- an accidental flip back to negative must still fail
@@ -2012,7 +2052,7 @@ static void test_weight_by_name() {
     assert(!tb::setWeightByName(w, "tSlotCounts", 1.0f));
 
     // the name table is exhaustive and every listed name is settable
-    assert(tb::weightNameCount() == 12);
+    assert(tb::weightNameCount() == 14);
     for (int i = 0; i < tb::weightNameCount(); ++i) {
         assert(tb::setWeightByName(w, tb::weightName(i), 1.0f));
     }
@@ -2543,18 +2583,18 @@ static void test_snapshot_layout() {
 // the wrong feature through JS.
 // ---------------------------------------------------------------------------
 static void test_weight_table() {
-    assert(tb::weightNameCount() == 12);
-    static const char* expected[12] = {
+    assert(tb::weightNameCount() == 14);
+    static const char* expected[14] = {
         "holes", "coveredCells", "bumpiness", "maxHeight", "heightPenalty",
         "rowTransitions", "columnTransitions", "wellDepth", "tSlotCount",
-        "b2bActive", "attackDealt", "b2bCharge"
+        "b2bActive", "attackDealt", "b2bCharge", "rowsWithHoles", "overhangs"
     };
     for (int i = 0; i < tb::weightNameCount(); ++i) {
         assert(std::string(tb::weightName(i)) == expected[i]);
     }
     // core/eval.h's out-of-range contract is the empty string, NOT nullptr.
     assert(tb::weightName(-1)[0] == '\0');
-    assert(tb::weightName(12)[0] == '\0');
+    assert(tb::weightName(14)[0] == '\0');
 
     // The bridge and setWeightByName must agree, index for index.
     for (int i = 0; i < tb::weightNameCount(); ++i) {
@@ -2567,7 +2607,7 @@ static void test_weight_table() {
     }
     tb::Weights w = tb::defaultWeights();
     assert(tb::bindingsWeightSlot(w, -1) == nullptr);
-    assert(tb::bindingsWeightSlot(w, 12) == nullptr);
+    assert(tb::bindingsWeightSlot(w, 14) == nullptr);
     assert(tb::bindingsWeightSlot(w, 0) == &w.holes);        // spot-check the two ends
     assert(tb::bindingsWeightSlot(w, 10) == &w.attackDealt);
 }
@@ -2981,6 +3021,8 @@ int main() {
     RUN(test_eval_row_transitions);
     RUN(test_eval_column_transitions);
     RUN(test_eval_well_depth);
+    RUN(test_eval_rows_with_holes);
+    RUN(test_eval_overhangs);
     RUN(test_eval_t_slots);
     RUN(test_eval_dot_product);
     RUN(test_weight_by_name);

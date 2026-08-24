@@ -16,6 +16,8 @@ struct Features {
     int columnTransitions;  // filled/empty alternations up each column, floor counts as filled
     int wellDepth;          // sum over columns of d*(d+1)/2 for a well of depth d
     int tSlotCount;         // notches a T could rotate into (see countTSlots)
+    int rowsWithHoles;      // rows containing at least one hole
+    int overhangs;          // holes with a neighbouring column open down to that row
 };
 
 Features extractFeatures(const Board& b);
@@ -33,6 +35,8 @@ struct Weights {
     float b2bActive;
     float attackDealt;
     float b2bCharge;          // per line of Surge the live chain holds (surgeCharge)
+    float rowsWithHoles;
+    float overhangs;          // positive: a side-reachable hole is cheaper than an enclosed one
 };
 
 Weights defaultWeights();
@@ -52,7 +56,7 @@ int countTSlots(const Board& b);
 // binding layer both read it from here. Do not declare a second one in bindings/ -- two
 // definitions of tb::weightName is a link error in tb_tests and in dist/bot.js.
 bool        setWeightByName(Weights& w, const char* name, float value);
-int         weightNameCount();                 // 12, one per Weights field
+int         weightNameCount();                 // one per Weights field
 const char* weightName(int i);                 // "" when i is out of range, never nullptr
 
 } // namespace tb
