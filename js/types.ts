@@ -11,6 +11,7 @@ export interface Weights {
   tSlotCount: number;
   b2bActive: number;
   attackDealt: number;
+  b2bCharge: number;
 }
 
 /** Mirrors tb::EventType in bindings/snapshot.h. */

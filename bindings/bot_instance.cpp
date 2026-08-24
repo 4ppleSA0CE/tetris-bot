@@ -29,6 +29,7 @@ float* bindingsWeightSlot(Weights& w, int index) {
         case 8:  return &w.tSlotCount;
         case 9:  return &w.b2bActive;
         case 10: return &w.attackDealt;
+        case 11: return &w.b2bCharge;
         default: return nullptr;
     }
 }

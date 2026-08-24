@@ -169,4 +169,9 @@ constexpr float W_T_SLOT_COUNT = 180.0f;
 // top of the [8,12] band and near the cliff); 600 (dies 0/5).
 constexpr float W_B2B_ACTIVE = 150.0f;
 
+// One point of attack per line of Surge the chain holds: the charge is garbage the chain
+// already owns, so breaking it must not read as free money and holding it is not a loss.
+// Retuned in the table at the top of this file.
+constexpr float W_B2B_CHARGE = 100.0f;
+
 } // namespace tb

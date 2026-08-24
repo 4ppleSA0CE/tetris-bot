@@ -1937,29 +1937,32 @@ static void test_eval_dot_product() {
     ones.holes = 1.0f; ones.coveredCells = 1.0f; ones.bumpiness = 1.0f;
     ones.maxHeight = 1.0f; ones.heightPenalty = 1.0f; ones.rowTransitions = 1.0f;
     ones.columnTransitions = 1.0f; ones.wellDepth = 1.0f; ones.tSlotCount = 1.0f;
-    ones.b2bActive = 1.0f; ones.attackDealt = 1.0f;
+    ones.b2bActive = 1.0f; ones.b2bCharge = 1.0f; ones.attackDealt = 1.0f;
 
     // FIX_B: holes 3 + covered 5 + bumpiness 4 + maxHeight 4 + heightPenalty 0
     //      + rowTransitions 12 + columnTransitions 12 + wellDepth 0 + tSlots 0 == 40
     tb::Board b = fixB();
-    assert(std::fabs(tb::evaluate(b, ones, false) - 40.0f) < 1e-3f);
-    // b2bActive adds exactly one unit of its weight, and attackDealt is NOT applied here
-    assert(std::fabs(tb::evaluate(b, ones, true) - 41.0f) < 1e-3f);
+    assert(std::fabs(tb::evaluate(b, ones, 0) - 40.0f) < 1e-3f);
+    // b2bActive adds one unit of its weight; b2bCharge adds surgeCharge(count) units;
+    // attackDealt is NOT applied here
+    assert(std::fabs(tb::evaluate(b, ones, 1) - 41.0f) < 1e-3f);
+    assert(std::fabs(tb::evaluate(b, ones, 4) - 41.0f) < 1e-3f);
+    assert(std::fabs(tb::evaluate(b, ones, 5) - 45.0f) < 1e-3f);
 
     // A single non-zero weight isolates a single feature.
     tb::Weights onlyHoles{};
     onlyHoles.holes = -2.0f;
-    assert(std::fabs(tb::evaluate(b, onlyHoles, false) - (-6.0f)) < 1e-3f);
+    assert(std::fabs(tb::evaluate(b, onlyHoles, 0) - (-6.0f)) < 1e-3f);
 
     // Defaults: an empty board has every feature at 0, so it evaluates to exactly 0.
     tb::Weights d = tb::defaultWeights();
-    assert(std::fabs(tb::evaluate(tb::Board{}, d, false)) < 1e-6f);
+    assert(std::fabs(tb::evaluate(tb::Board{}, d, 0)) < 1e-6f);
     // Every health weight is negative and every posture weight is positive. If this
     // assertion fires, someone inverted a sign and the bot will play upside down.
     assert(d.holes < 0.0f && d.coveredCells < 0.0f && d.bumpiness < 0.0f);
     assert(d.heightPenalty < 0.0f && d.wellDepth < 0.0f);
     assert(d.rowTransitions < 0.0f && d.columnTransitions < 0.0f);
-    assert(d.tSlotCount > 0.0f && d.b2bActive > 0.0f && d.attackDealt > 0.0f);
+    assert(d.tSlotCount > 0.0f && d.b2bActive > 0.0f && d.b2bCharge > 0.0f && d.attackDealt > 0.0f);
 
     // maxHeight is the ONE deliberate exception, and it is asserted positive rather than
     // simply dropped from the check -- an accidental flip back to negative must still fail
@@ -1994,13 +1997,14 @@ static void test_weight_by_name() {
     assert(!tb::setWeightByName(w, "tSlotCounts", 1.0f));
 
     // the name table is exhaustive and every listed name is settable
-    assert(tb::weightNameCount() == 11);
+    assert(tb::weightNameCount() == 12);
     for (int i = 0; i < tb::weightNameCount(); ++i) {
         assert(tb::setWeightByName(w, tb::weightName(i), 1.0f));
     }
     assert(std::fabs(w.holes - 1.0f) < 1e-3f);
     assert(std::fabs(w.wellDepth - 1.0f) < 1e-3f);
     assert(std::fabs(w.b2bActive - 1.0f) < 1e-3f);
+    assert(std::fabs(w.b2bCharge - 1.0f) < 1e-3f);
 
     // out-of-range indices return the empty string, never a null pointer
     assert(tb::weightName(-1)[0] == '\0');
@@ -2469,18 +2473,18 @@ static void test_snapshot_layout() {
 // the wrong feature through JS.
 // ---------------------------------------------------------------------------
 static void test_weight_table() {
-    assert(tb::weightNameCount() == 11);
-    static const char* expected[11] = {
+    assert(tb::weightNameCount() == 12);
+    static const char* expected[12] = {
         "holes", "coveredCells", "bumpiness", "maxHeight", "heightPenalty",
         "rowTransitions", "columnTransitions", "wellDepth", "tSlotCount",
-        "b2bActive", "attackDealt"
+        "b2bActive", "attackDealt", "b2bCharge"
     };
     for (int i = 0; i < tb::weightNameCount(); ++i) {
         assert(std::string(tb::weightName(i)) == expected[i]);
     }
     // core/eval.h's out-of-range contract is the empty string, NOT nullptr.
     assert(tb::weightName(-1)[0] == '\0');
-    assert(tb::weightName(11)[0] == '\0');
+    assert(tb::weightName(12)[0] == '\0');
 
     // The bridge and setWeightByName must agree, index for index.
     for (int i = 0; i < tb::weightNameCount(); ++i) {
@@ -2493,7 +2497,7 @@ static void test_weight_table() {
     }
     tb::Weights w = tb::defaultWeights();
     assert(tb::bindingsWeightSlot(w, -1) == nullptr);
-    assert(tb::bindingsWeightSlot(w, 11) == nullptr);
+    assert(tb::bindingsWeightSlot(w, 12) == nullptr);
     assert(tb::bindingsWeightSlot(w, 0) == &w.holes);        // spot-check the two ends
     assert(tb::bindingsWeightSlot(w, 10) == &w.attackDealt);
 }

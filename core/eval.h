@@ -32,6 +32,7 @@ struct Weights {
     float tSlotCount;
     float b2bActive;
     float attackDealt;
+    float b2bCharge;          // per line of Surge the live chain holds (surgeCharge)
 };
 
 Weights defaultWeights();
@@ -39,7 +40,7 @@ Weights defaultWeights();
 // Terminal board evaluation. Weights carry their own sign, so this is a plain dot product.
 // attackDealt is NOT applied here: it is applied per node by the search, discounted by gamma
 // to the depth of the placement that earned it (PRD 4.5).
-float evaluate(const Board& b, const Weights& w, bool b2bActive);
+float evaluate(const Board& b, const Weights& w, int b2bCount);
 
 int countTSlots(const Board& b);
 
@@ -51,7 +52,7 @@ int countTSlots(const Board& b);
 // binding layer both read it from here. Do not declare a second one in bindings/ -- two
 // definitions of tb::weightName is a link error in tb_tests and in dist/bot.js.
 bool        setWeightByName(Weights& w, const char* name, float value);
-int         weightNameCount();                 // 11, one per Weights field
+int         weightNameCount();                 // 12, one per Weights field
 const char* weightName(int i);                 // "" when i is out of range, never nullptr
 
 } // namespace tb

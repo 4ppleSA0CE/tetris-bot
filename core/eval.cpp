@@ -1,4 +1,5 @@
 #include "core/eval.h"
+#include "core/attack.h"
 #include "core/board.h"
 
 namespace tb {
@@ -66,10 +67,11 @@ Weights defaultWeights() {
     w.tSlotCount        = W_T_SLOT_COUNT;
     w.b2bActive         = W_B2B_ACTIVE;
     w.attackDealt       = W_ATTACK_DEALT;
+    w.b2bCharge         = W_B2B_CHARGE;
     return w;
 }
 
-float evaluate(const Board& b, const Weights& w, bool b2bActive) {
+float evaluate(const Board& b, const Weights& w, int b2bCount) {
     const Features f = extractFeatures(b);
     return w.holes             * static_cast<float>(f.holes)
          + w.coveredCells      * static_cast<float>(f.coveredCells)
@@ -80,7 +82,8 @@ float evaluate(const Board& b, const Weights& w, bool b2bActive) {
          + w.columnTransitions * static_cast<float>(f.columnTransitions)
          + w.wellDepth         * static_cast<float>(f.wellDepth)
          + w.tSlotCount        * static_cast<float>(f.tSlotCount)
-         + w.b2bActive         * (b2bActive ? 1.0f : 0.0f);
+         + w.b2bActive         * (b2bCount > 0 ? 1.0f : 0.0f)
+         + w.b2bCharge         * static_cast<float>(surgeCharge(b2bCount));
     // NOTE: w.attackDealt is intentionally absent. Attack is a per-move reward applied by
     // the search with the gamma discount (PRD 4.5), not a property of the terminal board.
 }
@@ -167,6 +170,7 @@ const WeightEntry kWeightTable[] = {
     { "tSlotCount",        &Weights::tSlotCount },
     { "b2bActive",         &Weights::b2bActive },
     { "attackDealt",       &Weights::attackDealt },
+    { "b2bCharge",         &Weights::b2bCharge },
 };
 constexpr int kWeightCount = static_cast<int>(sizeof(kWeightTable) / sizeof(kWeightTable[0]));
 

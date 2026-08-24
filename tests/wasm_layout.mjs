@@ -47,7 +47,7 @@ assert.equal(layout.pendingSpin.offset + 1, layout.pathProgress.offset,
   'pendingSpin and pathProgress must be adjacent, in that order');
 
 const weights = JSON.parse(M.getWeightsInfo());
-assert.equal(weights.length, 11, `expected 11 weights, got ${weights.length}`);
+assert.equal(weights.length, 12, `expected 12 weights, got ${weights.length}`);
 weights.forEach((w, i) => {
   assert.equal(w.index, i, `weight ${w.name} has index ${w.index}, expected ${i}`);
   assert.equal(typeof w.default, 'number');
@@ -55,7 +55,7 @@ weights.forEach((w, i) => {
 assert.deepEqual(weights.map((w) => w.name), [
   'holes', 'coveredCells', 'bumpiness', 'maxHeight', 'heightPenalty',
   'rowTransitions', 'columnTransitions', 'wellDepth', 'tSlotCount',
-  'b2bActive', 'attackDealt',
+  'b2bActive', 'attackDealt', 'b2bCharge',
 ]);
 
 const cells = JSON.parse(M.getPieceCells());

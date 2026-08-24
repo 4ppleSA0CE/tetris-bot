@@ -178,7 +178,7 @@ SearchResult search(const Board& b, PieceType current, PieceType hold,
                                           : (uint8_t)0;
                     child.attackScore = parent.attackScore
                                       + cfg.weights.attackDealt * (float)atk * discount;
-                    float terminal = evaluate(child.board, cfg.weights, child.b2bCount > 0);
+                    float terminal = evaluate(child.board, cfg.weights, child.b2bCount);
                     if (aboveField(child.board)) terminal += TOPOUT_PENALTY;
                     child.score = child.attackScore + terminal;
 
