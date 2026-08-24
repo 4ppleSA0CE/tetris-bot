@@ -145,6 +145,17 @@ SearchResult search(const Board& b, PieceType current, PieceType hold,
         levelBest = 0.0f;
         levelRoot = -1;
 
+        // INSERTION DEDUP table (see the child loop). static keeps ~100 KB off the WASM
+        // stack, same reasoning as g_scratch; the search is single-threaded by design.
+        // itCount guards the open-address probe: a full table would loop forever, so
+        // once nearly full the level simply stops deduping (correct, just less thrifty).
+        constexpr int ITSIZE = 8192;
+        static uint64_t ihash[ITSIZE];
+        static float    ireward[ITSIZE];
+        static bool     iused[ITSIZE];
+        int itCount = 0;
+        for (int t = 0; t < ITSIZE; ++t) iused[t] = false;
+
         // TRANSPOSITION FOLD. Half the surviving beam is duplicate states (measured 52% of
         // slots at 8x3000 under 4/16) reached along different paths. A duplicate with lower
         // pathReward is strictly dominated - identical future, less banked reward - so
@@ -235,6 +246,36 @@ SearchResult search(const Board& b, PieceType current, PieceType hold,
                     if (lines > 0 && !b2bMaintaining(ci))          reward += cfg.weights.plainClear;
                     if (piece == PIECE_T && pl.spin == SPIN_NONE)  reward += cfg.weights.wastedT;
                     child.pathReward = parent.pathReward + reward * discount;
+
+                    // INSERTION DEDUP. Identical states share their future, so among
+                    // duplicates only the highest pathReward can matter; a child that
+                    // matches a seen state without beating its banked reward is dropped
+                    // BEFORE it is evaluated or takes a beam slot. A better late
+                    // duplicate still inserts; its dominated twin (a zombie in the
+                    // heap) is caught by the expansion fold on the next level. Ties
+                    // keep the first arrival, so the search stays deterministic.
+                    if (itCount < ITSIZE - ITSIZE / 8) {
+                        const uint64_t chash = stateHash(child);
+                        int slot = (int)(chash & (uint64_t)(ITSIZE - 1));
+                        bool dominated = false;
+                        for (;;) {
+                            if (!iused[slot]) {
+                                iused[slot]   = true;
+                                ihash[slot]   = chash;
+                                ireward[slot] = child.pathReward;
+                                ++itCount;
+                                break;
+                            }
+                            if (ihash[slot] == chash) {
+                                if (child.pathReward <= ireward[slot]) dominated = true;
+                                else ireward[slot] = child.pathReward;
+                                break;
+                            }
+                            slot = (slot + 1) & (ITSIZE - 1);
+                        }
+                        if (dominated) continue;
+                    }
+
                     float terminal = evaluate(child.board, cfg.weights, child.b2bCount,
                                               (int)child.remaining);
                     if (aboveField(child.board)) terminal += TOPOUT_PENALTY;

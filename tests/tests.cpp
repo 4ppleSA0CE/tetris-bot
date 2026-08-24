@@ -2466,6 +2466,28 @@ static void test_search_node_budget() {
     assert(r.valid && r.nodes > 1);
 }
 
+static void test_search_insertion_dedup_deterministic() {
+    tb::SearchConfig cfg;
+    cfg.depth = 5;
+    cfg.beamWidth = 100;
+    cfg.timeBudgetMs = 1e9f;
+    cfg.nodeBudget = 4000;
+    cfg.measureDupes = true;
+    tb::Board b{};
+    tb::addGarbage(b, 6, 3);
+    tb::PieceType q[5] = { tb::PIECE_T, tb::PIECE_I, tb::PIECE_S, tb::PIECE_Z, tb::PIECE_O };
+    tb::SearchResult r1 = tb::search(b, tb::PIECE_L, tb::PIECE_NONE, q, 5, 1, 0, cfg, 0);
+    tb::SearchResult r2 = tb::search(b, tb::PIECE_L, tb::PIECE_NONE, q, 5, 1, 0, cfg, 0);
+    assert(r1.valid && r2.valid);
+    assert(r1.nodes == r2.nodes && r1.score == r2.score);
+    assert(r1.placement.x == r2.placement.x && r1.placement.rot == r2.placement.rot);
+    // Insertion dedup keeps dominated duplicates out of the beam; the expansion fold only
+    // ever sees the rare better-late-duplicate zombies now. Was 42% of slots before it.
+    assert(r1.beamSlots > 0);
+    assert(r1.dupes * 5 < r1.beamSlots);
+    std::printf("      insertion dedup: %ld dupes in %ld slots\n", r1.dupes, r1.beamSlots);
+}
+
 static void test_search_topout_semantics() {
     tb::SearchConfig cfg;
     cfg.timeBudgetMs = 1e9f;   // deterministic
@@ -3325,6 +3347,7 @@ int main() {
     RUN(test_search_wasted_t);
     RUN(test_search_incoming_cancel);
     RUN(test_search_node_budget);
+    RUN(test_search_insertion_dedup_deterministic);
     RUN(test_search_topout_semantics);
     RUN(test_search_time_budget);
     RUN(test_game_steps);
