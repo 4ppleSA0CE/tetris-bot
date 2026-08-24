@@ -77,10 +77,13 @@ constexpr float W_WELL_DEPTH = 0.3f;
 constexpr float W_T_SLOT_COUNT = 255.5f;
 
 // Virtual T-spin cutout rewards (plan 11, Cold Clear's tslot idea): a ready slot is
-// virtually executed and the board evaluated as if the spin gets taken. Hand-seeded at
-// roughly the attack a TSS/TSD is worth; the tuner owns them from here on.
-constexpr float W_TSLOT_1 = 100.0f;
-constexpr float W_TSLOT_2 = 300.0f;
+// virtually executed and the board evaluated as if the spin gets taken. Hand-seeded
+// 100/300 LOST the duel against zeroed rewards 11-29 (LOS 0.002, avg game 65 pieces) --
+// the rest of the vector cannot absorb rewards that large, the bot chases slots and
+// dies. Shipped at 0 (the cutout still reshapes the other features); the tuner owns
+// the values from plan 11's retune on.
+constexpr float W_TSLOT_1 = 0.0f;
+constexpr float W_TSLOT_2 = 0.0f;
 
 // Down from plan-6's 241: duels average 88 pieces, so a long-held chain rarely pays out.
 // Spend the chain, send the lines, kill first.

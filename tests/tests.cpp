@@ -2214,8 +2214,9 @@ static void test_eval_dot_product() {
     assert(d.holes < 0.0f && d.coveredCells < 0.0f);
     assert(d.rowTransitions < 0.0f && d.columnTransitions < 0.0f);
     assert(d.tSlotCount > 0.0f && d.b2bActive > 0.0f && d.b2bCharge > 0.0f && d.attackDealt > 0.0f);
-    // Cutout rewards: a ready TSD is worth more than a ready TSS, both worth taking.
-    assert(d.tslot1 > 0.0f && d.tslot2 > d.tslot1);
+    // Cutout rewards ship at 0 until the tuner owns them (hand seeds measurably lost);
+    // they must never go negative -- a ready spin is not a liability.
+    assert(d.tslot1 >= 0.0f && d.tslot2 >= d.tslot1);
     // overhangs is a partial refund of holes (side-reachable ones are cheap to fix), so it is
     // positive but never outweighs holes itself.
     assert(d.rowsWithHoles < 0.0f);
