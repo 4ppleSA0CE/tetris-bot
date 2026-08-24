@@ -577,6 +577,7 @@ int main(int argc, char** argv) {
         }
         else if (!std::strcmp(a, "--weights")) { if (!applyWeightSpec(cfg.weights, need("--weights"))) return 2; }
         else if (!std::strcmp(a, "--stats"))   stats = true;
+        else if (!std::strcmp(a, "--dupes"))   cfg.measureDupes = true;
         else if (!std::strcmp(a, "--json"))    json = true;
         else if (!std::strcmp(a, "--list-weights")) {
             // name=default per line; tools/tune.py and tools/bench.py read the table from here
@@ -631,6 +632,7 @@ int main(int argc, char** argv) {
     std::vector<float> times;
     times.reserve(static_cast<size_t>(pieces));
     double nodeSum = 0.0;
+    double dupeSum = 0.0, slotSum = 0.0;
 
     uint32_t topOuts = 0;
     uint32_t basePieces = 0, baseLines = 0, baseAttack = 0, baseTspins = 0, baseSurge = 0;
@@ -648,6 +650,8 @@ int main(int argc, char** argv) {
         if (game.piecesPlaced() != before) {
             times.push_back(game.lastSearchMs());
             nodeSum += static_cast<double>(game.lastSearchNodes());
+            dupeSum += static_cast<double>(game.lastSearchDupes());
+            slotSum += static_cast<double>(game.lastSearchBeamSlots());
             if (game.maxB2b() > maxB2b) maxB2b = game.maxB2b();
             int h = 0;
             for (int c = 0; c < tb::BOARD_W; ++c) {
@@ -706,6 +710,8 @@ int main(int argc, char** argv) {
         std::printf("%-12s%5u\n", "top-outs", topOuts);
         std::printf("%-12sp50 %.1f  p99 %.1f\n", "search ms", pct(0.50), pct(0.99));
         std::printf("%-12s%5.0f   per piece\n", "nodes", hN > 0.0 ? nodeSum / hN : 0.0);
+        if (slotSum > 0.0)
+            std::printf("%-12s%5.2f%%  of beam slots\n", "dupes", 100.0 * dupeSum / slotSum);
     }
 
     if (heights) {

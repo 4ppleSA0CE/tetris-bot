@@ -56,6 +56,8 @@ void Game::stepPiece() {
     lastSearchMs_ = (float)std::chrono::duration<double, std::milli>(
                         std::chrono::steady_clock::now() - t0).count();
     lastSearchNodes_ = r.nodes;
+    lastSearchDupes_ = r.dupes;
+    lastSearchBeamSlots_ = r.beamSlots;
 
     if (!r.valid) {
         toppedOut_ = true;

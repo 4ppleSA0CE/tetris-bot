@@ -20,6 +20,9 @@ struct SearchConfig {
     // Same horizon as the time budget when calibrated to it, but identical on every run and
     // on every core, which is what tools/tune.py needs. Shipped play never sets it.
     long  nodeBudget   = 0;
+    // Diagnostics only: count duplicate states inside each surviving beam (SearchResult.dupes).
+    // Off by default; costs a hash of every beam entry per level when on.
+    bool  measureDupes = false;
     Weights weights  = defaultWeights();
 };
 
@@ -29,6 +32,8 @@ struct SearchResult {
     float     score;
     bool      valid;      // false only if no legal placement exists (top-out)
     long      nodes;      // children scored before the answer was returned
+    long      dupes;      // duplicate beam entries seen (0 unless cfg.measureDupes)
+    long      beamSlots;  // beam entries inspected for dupes (denominator for the fraction)
 };
 
 // Beam search over the preview queue with hold branching (PRD 4.5).

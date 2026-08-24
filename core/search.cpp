@@ -62,6 +62,19 @@ inline bool aboveField(const Board& b) {
     return false;
 }
 
+// FNV-1a over the parts of a Node that make two beam entries interchangeable. Diagnostics
+// only (cfg.measureDupes) - collisions just miscount slightly.
+inline uint64_t stateHash(const Node& n) {
+    uint64_t h = 1469598103934665603ull;
+    auto mix = [&h](uint64_t v) { h = (h ^ v) * 1099511628211ull; };
+    for (int y = 0; y < BOARD_H; ++y) mix(n.board.rows[y]);
+    mix((uint64_t)(uint8_t)n.hold);
+    mix((uint64_t)(uint8_t)n.queueIdx);
+    mix(n.b2bCount);
+    mix(n.combo);
+    return h;
+}
+
 } // namespace
 
 SearchResult search(const Board& b, PieceType current, PieceType hold,
@@ -79,6 +92,8 @@ SearchResult search(const Board& b, PieceType current, PieceType hold,
     res.score     = 0.0f;
     res.valid     = false;
     res.nodes     = 0;
+    res.dupes     = 0;
+    res.beamSlots = 0;
 
     Scratch& S = g_scratch;
 
@@ -248,6 +263,17 @@ SearchResult search(const Board& b, PieceType current, PieceType hold,
         }
 
         if (nextCount == 0) break;   // nothing expanded anywhere; keep the promoted answer
+        if (cfg.measureDupes) {
+            uint64_t seen[MAX_BEAM];
+            int seenCount = 0;
+            for (int i2 = 0; i2 < nextCount; ++i2) {
+                const uint64_t h = stateHash(next[i2]);
+                bool dup = false;
+                for (int j2 = 0; j2 < seenCount; ++j2) if (seen[j2] == h) { dup = true; break; }
+                if (dup) ++res.dupes; else seen[seenCount++] = h;
+            }
+            res.beamSlots += nextCount;
+        }
         std::swap(cur, next);
         curCount = nextCount;
         discount *= cfg.gamma;
