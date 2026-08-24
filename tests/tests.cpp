@@ -2052,8 +2052,12 @@ static void test_eval_tslot_cutout_tsd() {
     assert(fr.holes == 2);          // (6,0) under the stack, (3,2) under the slot lip
     assert(fc.holes == 0);          // vanished with the virtual TSD
     assert(fr.maxHeight == 4 && fc.maxHeight == 2);
-    // evaluate() applies the cutout only when told a T is available
-    const tb::Weights w = tb::defaultWeights();
+    // evaluate() applies the cutout only when a T is available AND a cutout weight is
+    // live; zero weights are byte-identical to the pre-cutout eval (the reshaping alone
+    // measurably increased pressure deaths).
+    tb::Weights w = tb::defaultWeights();
+    assert(tb::evaluate(b, w, 0, 0, 1) == tb::evaluate(b, w, 0, 0, 0));
+    w.tslot2 = 300.0f;
     assert(tb::evaluate(b, w, 0, 0, 1) != tb::evaluate(b, w, 0, 0, 0));
     std::printf("  ok  test_eval_tslot_cutout_tsd\n");
 }

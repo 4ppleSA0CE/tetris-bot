@@ -124,7 +124,11 @@ Weights defaultWeights() {
 float evaluate(const Board& b, const Weights& w, int b2bCount, int pendingRise,
                int tAvail) {
     Features f;
-    if (tAvail > 0) {
+    // Zero cutout weights = cutout fully off, byte-identical to the pre-plan-11 eval.
+    // The reshaping alone is NOT free: with rewards at 0 it still hid holes and lowered
+    // maxHeight under a ready slot, and the 4/16 bench went from 0 to 32 top-outs -- the
+    // eval understated danger exactly when pressure made honesty matter most.
+    if (tAvail > 0 && (w.tslot1 != 0.0f || w.tslot2 != 0.0f)) {
         Board cut = b;
         int l1 = 0, l2 = 0;
         cutoutTSlots(&cut, tAvail, &l1, &l2);
