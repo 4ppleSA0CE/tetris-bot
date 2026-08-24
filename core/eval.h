@@ -61,5 +61,6 @@ int countTSlots(const Board& b);
 bool        setWeightByName(Weights& w, const char* name, float value);
 int         weightNameCount();                 // one per Weights field
 const char* weightName(int i);                 // "" when i is out of range, never nullptr
+float       weightValue(const Weights& w, int i);  // 0 when i is out of range
 
 } // namespace tb

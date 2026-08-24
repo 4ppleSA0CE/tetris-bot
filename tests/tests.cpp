@@ -2066,6 +2066,13 @@ static void test_weight_by_name() {
     // out-of-range indices return the empty string, never a null pointer
     assert(tb::weightName(-1)[0] == '\0');
     assert(tb::weightName(tb::weightNameCount())[0] == '\0');
+
+    // weightValue reads back through the same table
+    tb::Weights v = tb::defaultWeights();
+    assert(tb::setWeightByName(v, "wastedT", -77.0f));
+    assert(std::fabs(tb::weightValue(v, 15) - (-77.0f)) < 1e-6f);
+    assert(std::fabs(tb::weightValue(v, 0) - tb::defaultWeights().holes) < 1e-6f);
+    assert(tb::weightValue(v, -1) == 0.0f && tb::weightValue(v, 16) == 0.0f);
 }
 
 // ---- Plan 3: search --------------------------------------------------------

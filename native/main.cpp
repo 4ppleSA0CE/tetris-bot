@@ -55,6 +55,7 @@ void printBoard(const tb::Board& b, unsigned index) {
 void usage() {
     std::fprintf(stderr,
                  "usage: tetris_bot [--seed N] [--pieces N] [--stats] [--json] [--print]\n"
+                 "                  [--list-weights]\n"
                  "                  [--depth N] [--width N] [--budget MS] [--heights]\n"
                  "                  [--weights name=value,...] [--garbage L/P] [--messiness F]\n"
                  "       tetris_bot --random [--seed N] [--pieces N] [--print] [--stats]\n"
@@ -520,6 +521,13 @@ int main(int argc, char** argv) {
         else if (!std::strcmp(a, "--weights")) { if (!applyWeightSpec(cfg.weights, need("--weights"))) return 2; }
         else if (!std::strcmp(a, "--stats"))   stats = true;
         else if (!std::strcmp(a, "--json"))    json = true;
+        else if (!std::strcmp(a, "--list-weights")) {
+            // name=default per line; tools/tune.py and tools/bench.py read the table from here
+            const tb::Weights d = tb::defaultWeights();
+            for (int k = 0; k < tb::weightNameCount(); ++k)
+                std::printf("%s=%g\n", tb::weightName(k), static_cast<double>(tb::weightValue(d, k)));
+            return 0;
+        }
         else if (!std::strcmp(a, "--garbage")) {
             // "L/P": queue L garbage lines every P pieces.
             const char* spec = need("--garbage");

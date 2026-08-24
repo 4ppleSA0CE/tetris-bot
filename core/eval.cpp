@@ -214,4 +214,9 @@ const char* weightName(int i) {
     return kWeightTable[i].name;
 }
 
+float weightValue(const Weights& w, int i) {
+    if (i < 0 || i >= kWeightCount) return 0.0f;
+    return w.*(kWeightTable[i].field);
+}
+
 } // namespace tb
