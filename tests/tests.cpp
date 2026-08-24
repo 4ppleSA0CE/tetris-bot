@@ -2009,10 +2009,10 @@ static void test_eval_dot_product() {
     // Defaults: an empty board has every feature at 0, so it evaluates to exactly 0.
     tb::Weights d = tb::defaultWeights();
     assert(std::fabs(tb::evaluate(tb::Board{}, d, 0)) < 1e-6f);
-    // Every health weight is negative and every posture weight is positive. If this
-    // assertion fires, someone inverted a sign and the bot will play upside down.
-    assert(d.holes < 0.0f && d.coveredCells < 0.0f && d.bumpiness < 0.0f);
-    assert(d.heightPenalty < 0.0f && d.wellDepth < 0.0f);
+    // Sign guards for the plan-6 CE-tuned vector. These are documentation, not laws of
+    // nature: the tuner owns the values, and this block exists so the next tuning run is
+    // forced to update the story in weights.h when a sign flips.
+    assert(d.holes < 0.0f && d.coveredCells < 0.0f);
     assert(d.rowTransitions < 0.0f && d.columnTransitions < 0.0f);
     assert(d.tSlotCount > 0.0f && d.b2bActive > 0.0f && d.b2bCharge > 0.0f && d.attackDealt > 0.0f);
     // overhangs is a partial refund of holes (side-reachable ones are cheap to fix), so it is
@@ -2020,19 +2020,16 @@ static void test_eval_dot_product() {
     assert(d.rowsWithHoles < 0.0f);
     assert(d.overhangs > 0.0f && d.overhangs < -d.holes);
     assert(d.plainClear < 0.0f && d.wastedT < 0.0f);
+    // The tuner flipped bumpiness (~+2: rowTransitions carries tidiness now) and wellDepth
+    // (+3.5: an open well is worth paying for - Cold Clear ships the same sign).
+    assert(d.bumpiness > 0.0f && d.wellDepth > 0.0f);
 
-    // maxHeight is the ONE deliberate exception, and it is asserted positive rather than
-    // simply dropped from the check -- an accidental flip back to negative must still fail
-    // here. Rationale in core/weights.h: every other board-health term only punishes height,
-    // so with maxHeight negative too, nothing in the evaluator ever rewards building. That
-    // was measured, not assumed -- the all-negative vector produced a 2.68-row average stack,
-    // sd 1.03, zero tetrises across 300 pieces, and a max b2b of 1, because clearing a single
-    // pays no attack but still improves every negative health term. maxHeight positive, with
-    // heightPenalty as the cliff above row 12, is what produces PRD 1.1's climb-and-collapse.
+    // maxHeight is positive on purpose and asserted rather than dropped -- an accidental
+    // flip back to negative must still fail here. With every health term negative, nothing
+    // rewards building: the measured all-negative vector played a 2.68-row pancake with zero
+    // tetrises. The pair only makes sense together: maxHeight is the bounded build reward,
+    // heightPenalty is the cliff above row 12 that bounds it.
     assert(d.maxHeight > 0.0f);
-    // The pair only makes sense together: a reward for height bounded by a penalty above the
-    // threshold. If someone zeroes the cliff while leaving the reward on, the bot stacks to
-    // the ceiling.
     assert(d.heightPenalty < 0.0f);
 }
 
@@ -2425,6 +2422,13 @@ static void test_game_steps() {
 static void test_game_surge_accounting() {
     tb::SearchConfig cfg;
     cfg.timeBudgetMs = 1e9f;
+    // Chain-indifferent weights: the plan-6 vector protects its chain so well that seed 42
+    // releases no Surge inside 1000 pieces. This test is about the ACCOUNTING (the event
+    // param and surgeSent() sums), so play a bot with no reason to hold the chain.
+    cfg.weights.plainClear = 0.0f;
+    cfg.weights.wastedT    = 0.0f;
+    cfg.weights.b2bActive  = 0.0f;
+    cfg.weights.b2bCharge  = 0.0f;
     tb::Game g(42u, cfg);
 
     uint32_t breaks = 0, surges = 0, sum = 0;
@@ -2464,8 +2468,7 @@ static void test_game_surge_accounting() {
 //
 // The budget is unbounded so the run is a fixed, deterministic sequence rather than a
 // wall-clock-dependent one: the counts asserted below are pinned facts about seed 42, not
-// probabilities. Over the 250 pieces scanned this run reaches a chain of 3+ consecutive
-// non-clearing placements by piece 53 and its first chain-breaking easy clear by piece 56.
+// probabilities.
 static void test_game_b2b_survives_non_clearing_pieces() {
     tb::SearchConfig cfg;
     cfg.timeBudgetMs = 1e9f;
@@ -2492,8 +2495,13 @@ static void test_game_b2b_survives_non_clearing_pieces() {
         } else {
             quietRun = 0;
             // A non-spin clear of fewer than four lines is an easy clear: it must break a live
-            // chain. This is the other half of the three-way rule.
-            if (prevB2b > 0 && g.lastSpin() == tb::SPIN_NONE && lines < 4) {
+            // chain. This is the other half of the three-way rule. An All Clear is the
+            // exception - it counts as difficult at any line count (plan 5) - and the
+            // plan-6 vector actually reaches one inside these 250 pieces.
+            bool pc = false;
+            for (int e = 0; e < g.eventCount(); ++e)
+                if (g.eventAt(e).type == tb::GEV_PERFECT_CLEAR) pc = true;
+            if (prevB2b > 0 && g.lastSpin() == tb::SPIN_NONE && lines < 4 && !pc) {
                 assert(b2b == 0);
                 ++easyBreaks;
             }
@@ -2502,9 +2510,36 @@ static void test_game_b2b_survives_non_clearing_pieces() {
         prevB2b   = b2b;
     }
 
-    // Both halves of the rule must actually have been exercised, or the loop above asserted
-    // nothing. "Several" non-clearing pieces mid-chain is the case the bug destroys.
+    // The quiet half of the rule must actually have been exercised, or the loop above
+    // asserted nothing. "Several" non-clearing pieces mid-chain is the case the bug destroys.
     assert(longestQuietRunMidChain >= 3);
+
+    // The break half needs a bot that is WILLING to break a chain, which the plan-6 vector
+    // is paid not to do (plainClear). Replay with chain-indifferent weights: the same rule,
+    // exercised by a bot with no reason to protect its b2b.
+    tb::SearchConfig cfg2;
+    cfg2.timeBudgetMs = 1e9f;
+    cfg2.weights.plainClear = 0.0f;
+    cfg2.weights.wastedT    = 0.0f;
+    cfg2.weights.b2bActive  = 0.0f;
+    cfg2.weights.b2bCharge  = 0.0f;
+    tb::Game h(42u, cfg2);
+    prevLines = 0;
+    prevB2b   = 0;
+    easyBreaks = 0;
+    for (int i = 0; i < 250 && !h.toppedOut(); ++i) {
+        h.stepPiece();
+        const uint32_t lines = h.linesCleared() - prevLines;
+        bool pc = false;
+        for (int e = 0; e < h.eventCount(); ++e)
+            if (h.eventAt(e).type == tb::GEV_PERFECT_CLEAR) pc = true;
+        if (lines > 0 && prevB2b > 0 && h.lastSpin() == tb::SPIN_NONE && lines < 4 && !pc) {
+            assert(h.b2bCount() == 0);
+            ++easyBreaks;
+        }
+        prevLines = h.linesCleared();
+        prevB2b   = h.b2bCount();
+    }
     assert(easyBreaks > 0);
 }
 

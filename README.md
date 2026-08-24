@@ -182,7 +182,7 @@ The named constants live in `core/weights.h`, which records what each vector was
 const bot = await createTetrisBot({ weights: { tSlotCount: 240, attackDealt: 140 } });
 ```
 
-**Note the scale: these are hundreds, not single digits.** `attackDealt` is the unit — 100 points is one garbage line of expected attack — so every other weight is quoted in hundredths of a garbage line (`holes` is -110, i.e. one hole costs 1.1 attack). Passing `tSlotCount: 3.5` does not nudge T-spin seeking, it switches it off.
+**Note the scale: these are hundreds, not single digits.** `attackDealt` is the unit — 100 points is one garbage line of expected attack — so every other weight is quoted in hundredths of a garbage line (`holes` is -112, i.e. one hole costs about 1.1 attack). Passing `tSlotCount: 3.5` does not nudge T-spin seeking, it switches it off.
 
 **`maxHeight` is positive, and that is deliberate.** It is the one weight whose sign departs from "board-health terms are negative", and it is the reason the bot stacks at all. With every health term negative, nothing in the evaluator ever rewards building: the measured result was a 2.7-row pancake with zero tetrises and a max back-to-back of 1, because clearing a single pays no attack yet still improves every negative term — the health weights were paying the bot to break its own chain. `maxHeight` is a bounded reward and `heightPenalty` is the cliff that bounds it, applied to `(height - 12)²`. **They are a matched pair and must be changed together:** raising the reward without the cliff stacks into the ceiling, raising the cliff without the reward pins the stack flat again.
 
