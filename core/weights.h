@@ -16,30 +16,27 @@ namespace tb {
 //
 // Override without a rebuild:  ./build/tetris_bot --weights tSlotCount=240,maxHeight=15
 //
-// RETUNED BY CROSS-ENTROPY (2026-08-24, plan 6), tools/tune.py: 30 generations, population
-// 50, elite 6; every candidate in a generation plays the same seeds, 1500 pieces solo plus
-// 1500 under --garbage 4/16; fitness is fewest top-outs then most attack; searches ran at
-// --nodes 5200, the deterministic stand-in calibrated to the 4.5 ms clock; attackDealt
-// pinned as the unit.
+// RETUNED BY DUEL-FITNESS CROSS-ENTROPY (2026-08-24, plan 8), tools/tune.py --duel: 20
+// generations, population 40, elite 6; fitness is paired versus wins against the moving
+// incumbent mean (5 seed pairs, both orientations, 400-piece cap) with net attack margin
+// as the tie-break; searches at --nodes 5200; attackDealt pinned as the unit. This replaced
+// solo-attack fitness after plan 7 proved it a broken proxy in both directions.
 //
-// Gate (tools/bench.py, wall clock, one process at a time, 8 seeds x 3000 pieces, against
-// the plan-5 12-weight vector):
+// Gate against the plan-6 solo-tuned vector:
 //
-//   solo            attack/piece 0.592 +- 0.014  vs  0.449 +- 0.010   top-outs 0 vs 0
-//   --garbage 4/16  attack/piece 0.684 +- 0.017  vs  0.530 +- 0.019   top-outs 9 vs 49
+//   tools/duel.py, 40 pairs x 2000 pieces:  56W 24L 0D  score 0.700  elo +147  LOS 1.000
+//                                           (average game only 88 pieces - it rushes the kill)
+//   tools/bench.py 4/16 (8 x 3000):         top-outs 0 vs 6, p99 4.6 ms
 //
-// Acceptance, seed 42 x 10000 at the shipped budget: attack 6005 (surge 1647), spins 18.3
-// per 100, max b2b 59, top-outs 0, p99 4.5 ms, avg height 5.2, max height 19.
+// KNOWN COST, accepted on purpose: solo attack/piece DROPPED to 0.374 vs 0.613 (4/16:
+// 0.546 vs 0.702). The vector plays a ~3-row flat stack, holds b2b chains of ~11 instead
+// of 40+, and converts stack into immediate attack. Versus strength is the product goal;
+// the solo demo looks tamer for it. If the demo look ever matters more, the plan-6 vector
+// in git history is the solo-shaped one.
 //
-// A plan-7 refinement (15 more CE generations after the transposition fold; holes -84,
-// maxHeight 18) gained +0.07 attack/piece solo and was REJECTED: 14 vs 3 top-outs under
-// 4/16 and a 35-45 duel loss (LOS 0.13). Solo-attack fitness over-values aggression the
-// duel punishes - gate every future vector with tools/duel.py, not bench.py alone.
-//
-// STYLE CHANGED with the retune: the plan-5 vector breathed at 8-9 rows; this one plays a
-// low stack (avg ~5.2) with a kept well - more Cold-Clear-shaped. If PRD 1.1's taller
-// climb-and-collapse look ever matters more than attack, retune with a height term in the
-// fitness rather than hand-bumping maxHeight.
+// A plan-7 refinement (solo-attack CE after the transposition fold) had the mirror failure:
+// +0.07 attack/piece solo, REJECTED on a 35-45 duel loss (LOS 0.13) and 14 vs 3 top-outs.
+// Solo bench and duel disagree in both directions - the duel is the gate, always.
 
 constexpr int HEIGHT_PENALTY_THRESHOLD = 12;
 
@@ -47,56 +44,57 @@ constexpr float W_ATTACK_DEALT = 100.0f;
 
 // THE ONLY WEIGHT KEEPING THE BOT ALIVE: zero it and the run tops out at piece 107; zeroing
 // any other weight alone costs no survival. If the bot starts topping out, look here first.
-constexpr float W_HOLES = -111.8f;
+constexpr float W_HOLES = -142.0f;
 
-constexpr float W_COVERED_CELLS = -9.3f;
+constexpr float W_COVERED_CELLS = -10.6f;
 
-// POSITIVE, and that is the tuner's answer, not a typo: with rowTransitions at -33.6
-// carrying surface tidiness, the old -4 was redundant, and the elite drifted through zero
-// to a small reward for texture (steps beside the well are where spins live).
-constexpr float W_BUMPINESS = 2.1f;
+// Back to ~0 from plan-6's +2.1: rowTransitions at -57.9 now carries all surface tidiness,
+// and the duel meta stopped paying for texture.
+constexpr float W_BUMPINESS = -1.1f;
 
-// Matched pair, same structure as always: a bounded reward for building, and the cliff that
-// bounds it, applied to (height - 12)^2. Raise the reward without the cliff and the bot
-// stacks into the ceiling; raise the cliff without the reward and the stack pins flat.
-constexpr float W_MAX_HEIGHT = 11.3f;
-constexpr float W_HEIGHT_PENALTY = -189.3f;
+// Matched pair: a bounded reward for building and the cliff that bounds it, applied to
+// (height - 12)^2. The duel tune softened the cliff from -189 to -51 - a bot that plays
+// at 3 rows almost never sees row 12, so the fitness stopped defending the wall.
+constexpr float W_MAX_HEIGHT = 12.0f;
+constexpr float W_HEIGHT_PENALTY = -50.7f;
 
-constexpr float W_ROW_TRANSITIONS = -33.6f;
-constexpr float W_COLUMN_TRANSITIONS = -8.1f;
+constexpr float W_ROW_TRANSITIONS = -57.9f;
+constexpr float W_COLUMN_TRANSITIONS = -8.3f;
 
-// POSITIVE: an open well is worth paying for (Cold Clear ships well_depth positive too).
-// The old -2 treated wells as a hazard; under pressure the kept well is how quads and
-// surge get banked, and the tuner flipped it.
-constexpr float W_WELL_DEPTH = 3.5f;
+// ~0 from plan-6's +3.5: at a 3-row stack the well is one hard drop away from existing
+// anyway, so the tuner stopped paying rent on it.
+constexpr float W_WELL_DEPTH = 0.3f;
 
 // countTSlots() recognises TSD-shaped slots only; TST and side-entry slots score 0. The bot
 // still finds those placements, it just is not paid to keep them open.
-constexpr float W_T_SLOT_COUNT = 235.8f;
+constexpr float W_T_SLOT_COUNT = 255.5f;
 
-constexpr float W_B2B_ACTIVE = 241.3f;
+// Down from plan-6's 241: duels average 88 pieces, so a long-held chain rarely pays out.
+// Spend the chain, send the lines, kill first.
+constexpr float W_B2B_ACTIVE = 51.0f;
 
-// Per line of Surge the live chain holds. Above the 1:1 attack rate on purpose: the search
-// horizon sees a break's payout but not the +1 per clear a held chain keeps earning.
-constexpr float W_B2B_CHARGE = 113.8f;
+// Per line of Surge the live chain holds. Near the 1:1 attack rate: the horizon argument
+// (the search sees a break's payout but not the held chain's future +1s) still applies,
+// but the duel meta discounts futures that arrive after the opponent is dead.
+constexpr float W_B2B_CHARGE = 96.5f;
 
 // BCTS's strongest term (Thiery & Scherrer 2009): a second hole in an already-holed row is
 // nearly free, a hole in a clean row costs a whole row.
-constexpr float W_ROWS_WITH_HOLES = -62.7f;
+constexpr float W_ROWS_WITH_HOLES = -71.9f;
 
 // Partial refund of W_HOLES for holes a piece can still slide into from the side.
-constexpr float W_OVERHANGS = 8.9f;
+constexpr float W_OVERHANGS = 8.3f;
 
 // Move terms (every versus bot has them: Cold Clear clear1..3 / wasted_t, ZZZ, Hikari).
 // A clear that does not maintain B2B spends stack for little attack; a T without a spin
 // spends the piece the whole T-slot economy is built around.
-constexpr float W_PLAIN_CLEAR = -114.7f;
-constexpr float W_WASTED_T    = -109.4f;
+constexpr float W_PLAIN_CLEAR = -118.6f;
+constexpr float W_WASTED_T    = -95.1f;
 
 // Times the extra height-cliff area pending garbage would add if it rose right now (plan 7).
 // Deliberately much softer than W_HEIGHT_PENALTY: charging the full cliff for garbage that
 // has not landed yet made the bot flatten, break its chain and DIE MORE (bench: 25 top-outs
-// vs 9 at 8x3000 under 4/16). Refined by the plan-7 tune.
-constexpr float W_INCOMING_RISK = -30.0f;
+// vs 9 at 8x3000 under 4/16).
+constexpr float W_INCOMING_RISK = -29.4f;
 
 } // namespace tb

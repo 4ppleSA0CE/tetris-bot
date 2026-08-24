@@ -2016,7 +2016,7 @@ static void test_eval_dot_product() {
     // Defaults: an empty board has every feature at 0, so it evaluates to exactly 0.
     tb::Weights d = tb::defaultWeights();
     assert(std::fabs(tb::evaluate(tb::Board{}, d, 0)) < 1e-6f);
-    // Sign guards for the plan-6 CE-tuned vector. These are documentation, not laws of
+    // Sign guards for the plan-8 duel-tuned vector. These are documentation, not laws of
     // nature: the tuner owns the values, and this block exists so the next tuning run is
     // forced to update the story in weights.h when a sign flips.
     assert(d.holes < 0.0f && d.coveredCells < 0.0f);
@@ -2030,9 +2030,10 @@ static void test_eval_dot_product() {
     // Softer than the real cliff on purpose: charging heightPenalty itself for garbage that
     // has not landed yet measurably increased deaths under pressure.
     assert(d.incomingRisk < 0.0f && d.incomingRisk > d.heightPenalty);
-    // The tuner flipped bumpiness (~+2: rowTransitions carries tidiness now) and wellDepth
-    // (+3.5: an open well is worth paying for - Cold Clear ships the same sign).
-    assert(d.bumpiness > 0.0f && d.wellDepth > 0.0f);
+    // The plan-8 duel tune pulled bumpiness and wellDepth to ~0 (rowTransitions at -58
+    // carries all surface tidiness; a 3-row stack gets its well for free). Guard the
+    // magnitude, not a sign that has now flipped twice.
+    assert(std::fabs(d.bumpiness) < 5.0f && std::fabs(d.wellDepth) < 5.0f);
 
     // maxHeight is positive on purpose and asserted rather than dropped -- an accidental
     // flip back to negative must still fail here. With every health term negative, nothing
