@@ -27,8 +27,8 @@ bool b2bMaintaining(const ClearInfo& c);
 //   b2bActive  = the chain was live BEFORE this clear.
 //   comboCount = number of consecutive prior clears (0 for the first).
 //
-// Base: single 0, double 1, triple 2, tetris 4, t-spin mini 0 (any line count),
-// t-spin single 2, t-spin double 4, t-spin triple 6.
+// Base (TETR.IO multiplayer table): single 0, double 1, triple 2, quad 4; mini spin
+// 0/1/2/4 for 1/2/3/4 lines; full T-spin 2/4/6 for 1/2/3 lines (10 for a spin quad).
 // Plus 1 when the clear is b2bMaintaining AND b2bActive.
 // Plus the combo bonus {0,0,1,1,1,2,2,3,3,4,4,4,5}, clamped at the last entry.
 // Plus 10 for a perfect clear. Always 0 when no lines cleared.

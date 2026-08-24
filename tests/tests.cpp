@@ -821,11 +821,15 @@ static void test_attack_prd_table_without_b2b_or_combo() {
     assert(tb::computeAttack(ci(2, tb::SPIN_NONE, false), false, 0) == 1);   // double
     assert(tb::computeAttack(ci(3, tb::SPIN_NONE, false), false, 0) == 2);   // triple
     assert(tb::computeAttack(ci(4, tb::SPIN_NONE, false), false, 0) == 4);   // tetris
-    assert(tb::computeAttack(ci(1, tb::SPIN_MINI, false), false, 0) == 0);   // t-spin mini
-    assert(tb::computeAttack(ci(2, tb::SPIN_MINI, false), false, 0) == 0);   // t-spin mini
+    // TETR.IO multiplayer table: a mini pays 0/1/2/4, a full spin 2/4/6/10.
+    assert(tb::computeAttack(ci(1, tb::SPIN_MINI, false), false, 0) == 0);   // mini single
+    assert(tb::computeAttack(ci(2, tb::SPIN_MINI, false), false, 0) == 1);   // mini double
+    assert(tb::computeAttack(ci(3, tb::SPIN_MINI, false), false, 0) == 2);   // mini triple
+    assert(tb::computeAttack(ci(4, tb::SPIN_MINI, false), false, 0) == 4);   // mini quad (I-spin)
     assert(tb::computeAttack(ci(1, tb::SPIN_FULL, false), false, 0) == 2);   // t-spin single
     assert(tb::computeAttack(ci(2, tb::SPIN_FULL, false), false, 0) == 4);   // t-spin double
     assert(tb::computeAttack(ci(3, tb::SPIN_FULL, false), false, 0) == 6);   // t-spin triple
+    assert(tb::computeAttack(ci(4, tb::SPIN_FULL, false), false, 0) == 10);  // spin quad
 }
 
 static void test_attack_b2b_bonus_is_applied() {
@@ -836,6 +840,7 @@ static void test_attack_b2b_bonus_is_applied() {
     assert(tb::computeAttack(ci(2, tb::SPIN_FULL, false), true, 0) == 5);   // tsd
     assert(tb::computeAttack(ci(3, tb::SPIN_FULL, false), true, 0) == 7);   // tst
     assert(tb::computeAttack(ci(1, tb::SPIN_MINI, false), true, 0) == 1);   // mini single
+    assert(tb::computeAttack(ci(2, tb::SPIN_MINI, false), true, 0) == 2);   // mini double
 }
 
 static void test_attack_b2b_bonus_is_not_applied() {
