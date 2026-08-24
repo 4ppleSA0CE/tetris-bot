@@ -1756,6 +1756,92 @@ static void test_mg_pathless_matches() {
     std::printf("  ok  test_mg_pathless_matches\n");
 }
 
+static void test_mg_seeded_matches_classic() {
+    const char* cheese[] = {
+        "..........",
+        "....##....",
+        "...####...",
+        "##.#####.#",
+        "#.########",
+    };
+    const char* overhang[] = {
+        "..........",
+        "#######...",
+        "########.#",
+        "#.######.#",
+        "#..#####.#",
+    };
+    const tb::Board boards[3] = {
+        tb::Board{},
+        tb::boardFromAscii(cheese, 5),
+        tb::boardFromAscii(overhang, 5),
+    };
+    for (const tb::Board& b : boards) {
+        for (int p = 0; p < 7; ++p) {
+            tb::MoveList seeded{};
+            tb::MoveList classic{};
+            tb::mgForceClassicBfs(false);
+            tb::generateMoves(b, static_cast<tb::PieceType>(p), &seeded, true);
+            tb::mgForceClassicBfs(true);
+            tb::generateMoves(b, static_cast<tb::PieceType>(p), &classic, true);
+            tb::mgForceClassicBfs(false);
+            assert(seeded.count == classic.count);
+            // Same sets: each run dedups by state, so match by (x, y, rot) key.
+            for (int i = 0; i < seeded.count; ++i) {
+                const tb::Placement& a = seeded.items[i];
+                bool found = false;
+                for (int j = 0; j < classic.count; ++j) {
+                    const tb::Placement& c = classic.items[j];
+                    if (a.x == c.x && a.y == c.y && a.rot == c.rot) {
+                        assert(a.spin == c.spin);
+                        found = true;
+                        break;
+                    }
+                }
+                assert(found && "seeded placement missing from classic BFS");
+            }
+        }
+    }
+    std::printf("  ok  test_mg_seeded_matches_classic\n");
+}
+
+// Every path a seeded run emits must replay legally from spawn to its placement.
+static void test_mg_seeded_paths_replayable() {
+    const char* overhang[] = {
+        "..........",
+        "#######...",
+        "########.#",
+        "#.######.#",
+        "#..#####.#",
+    };
+    const tb::Board b = tb::boardFromAscii(overhang, 5);
+    for (int p = 0; p < 7; ++p) {
+        tb::MoveList ml{};
+        tb::generateMoves(b, static_cast<tb::PieceType>(p), &ml, true);
+        assert(ml.count > 0);
+        for (int i = 0; i < ml.count; ++i) {
+            const tb::Placement& pl = ml.items[i];
+            int x = tb::SPAWN_X;
+            int y = tb::SPAWN_Y;
+            tb::Rot r = tb::ROT_0;
+            assert(!tb::collides(b, static_cast<tb::PieceType>(p), r, x, y));
+            for (int k = 0; k < pl.pathLen; ++k) {
+                int nx = 0, ny = 0;
+                tb::Rot nr = tb::ROT_0;
+                uint8_t nk = 255;
+                const bool ok = tb::mgApplyActionForTest(
+                    b, static_cast<tb::PieceType>(p),
+                    static_cast<tb::Action>(pl.path[k]), x, y, r, &nx, &ny, &nr, &nk);
+                assert(ok && "seeded path contains an illegal action");
+                x = nx; y = ny; r = nr;
+            }
+            assert(x == pl.x && y == pl.y && r == pl.rot);
+            assert(tb::collides(b, static_cast<tb::PieceType>(p), r, x, y - 1));
+        }
+    }
+    std::printf("  ok  test_mg_seeded_paths_replayable\n");
+}
+
 static void test_mg_placement_fields_are_consistent() {
     const char* midRows[] = {
         "..........",
@@ -3254,6 +3340,8 @@ int main() {
     RUN(test_bot_instance_hard_drops);
     RUN(test_mg_no_pointless_final_rotation);
     RUN(test_mg_pathless_matches);
+    RUN(test_mg_seeded_matches_classic);
+    RUN(test_mg_seeded_paths_replayable);
     RUN(test_immobile_requires_an_overhang);
     RUN(test_starved_search_still_sweeps_the_root);
     RUN(test_uniform_pacing);

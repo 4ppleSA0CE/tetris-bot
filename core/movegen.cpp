@@ -119,6 +119,9 @@ struct BfsScratch {
 
 BfsScratch g_bfs{};   // zero-initialised, so the first call runs with gen == 1
 
+bool g_forceClassic = false;   // test seam: force the spawn-rooted BFS
+int  g_seedY = -1;             // >= 0 while the current run is surface-seeded
+
 // Applies one action to a state. Returns false if the action is illegal.
 // Writes the resulting state and, for a 90-degree rotation, its kick index.
 bool mgApplyAction(const Board& b, PieceType p, Action a,
@@ -174,11 +177,35 @@ int mgRecoverPath(const BfsScratch& S, int32_t si, Action* out) {
         rev[n++] = static_cast<Action>(S.via[cur]);
         cur = S.parent[cur];
     }
-    for (int i = 0; i < n; ++i) out[i] = rev[n - 1 - i];
-    return n;
+    int pn = 0;
+    Action pre[32];
+    if (g_seedY >= 0) {
+        // Seeded root: synthesize the provably-legal free-air prefix (rotate at spawn,
+        // walk to the seed column, soft-drop to the surface). Worst case 1 + 7 + 21 = 29.
+        int rx = 0, ry = 0;
+        Rot rr = ROT_0;
+        mgDecodeState(cur, &rx, &ry, &rr);
+        if (rr == ROT_R)      pre[pn++] = ACT_CW;
+        else if (rr == ROT_2) pre[pn++] = ACT_180;
+        else if (rr == ROT_L) pre[pn++] = ACT_CCW;
+        for (int i = 0; i < rx - SPAWN_X; ++i) pre[pn++] = ACT_RIGHT;
+        for (int i = 0; i < SPAWN_X - rx; ++i) pre[pn++] = ACT_LEFT;
+        for (int i = 0; i < SPAWN_Y - ry; ++i) pre[pn++] = ACT_SOFT_DROP;
+        if (n + pn > MAX_PATH_LEN) return -1;
+    }
+    for (int i = 0; i < pn; ++i) out[i] = pre[i];
+    for (int i = 0; i < n; ++i) out[pn + i] = rev[n - 1 - i];
+    return pn + n;
 }
 
 } // namespace
+
+void mgForceClassicBfs(bool on) { g_forceClassic = on; }
+
+bool mgApplyActionForTest(const Board& b, PieceType p, Action a, int x, int y, Rot r,
+                          int* nx, int* ny, Rot* nr, uint8_t* nk) {
+    return mgApplyAction(b, p, a, x, y, r, nx, ny, nr, nk);
+}
 
 void generateMoves(const Board& b, PieceType p, MoveList* out, bool withPaths) {
     out->count = 0;
@@ -193,15 +220,48 @@ void generateMoves(const Board& b, PieceType p, MoveList* out, bool withPaths) {
     if (!mgInStateBounds(SPAWN_X, SPAWN_Y)) return;
     if (collides(b, p, ROT_0, SPAWN_X, SPAWN_Y)) return;   // topped out
 
+    // SURFACE SEEDING. Let h be the first empty row above the stack. Every state with
+    // origin y >= h is collision-free except at the walls (all cell offsets are >= 0),
+    // so the air column the classic BFS wades through carries no information: any legal
+    // (x, rot) is reachable at y == h by rotating at spawn (in free air only a wall can
+    // fail SRS test 0, and at SPAWN_X no rotation touches a wall), walking horizontally
+    // (the legal x range per rotation is one contiguous interval containing SPAWN_X),
+    // then soft-dropping straight down a free column. A wall kick from the air can reach
+    // a state at y >= h - 2, but that state is also reachable as seed + soft drops, so
+    // seeding every legal (x, rot) at y == h reaches exactly the classic placement set.
+    // mgRecoverPath() synthesizes the rotate-walk-drop prefix from the seed state itself.
+    int stackTop = 0;
+    for (int y = BOARD_H - 1; y >= 0; --y) {
+        if (b.rows[y] != 0u) { stackTop = y + 1; break; }
+    }
+    const bool seedIt = !g_forceClassic && stackTop < SPAWN_Y;
+    g_seedY = seedIt ? stackTop : -1;
+
     int head = 0, tail = 0;
-    const int32_t root = mgStateIndex(SPAWN_X, SPAWN_Y, ROT_0);
-    S.stamp[root]  = S.gen;
-    S.parent[root] = -1;
-    S.via[root]    = ACT_NONE;
-    S.kick[root]   = 255;
-    S.depth[root]  = 0;
-    S.rotSrc[root] = -1;
-    S.queue[tail++] = root;
+    if (seedIt) {
+        for (int r = 0; r < 4; ++r) {
+            for (int x = MG_X_MIN; x <= MG_X_MAX; ++x) {
+                if (collides(b, p, static_cast<Rot>(r), x, stackTop)) continue;
+                const int32_t si = mgStateIndex(x, stackTop, static_cast<Rot>(r));
+                S.stamp[si]  = S.gen;
+                S.parent[si] = -1;
+                S.via[si]    = ACT_NONE;
+                S.kick[si]   = 255;
+                S.depth[si]  = 0;
+                S.rotSrc[si] = -1;
+                S.queue[tail++] = si;
+            }
+        }
+    } else {
+        const int32_t root = mgStateIndex(SPAWN_X, SPAWN_Y, ROT_0);
+        S.stamp[root]  = S.gen;
+        S.parent[root] = -1;
+        S.via[root]    = ACT_NONE;
+        S.kick[root]   = 255;
+        S.depth[root]  = 0;
+        S.rotSrc[root] = -1;
+        S.queue[tail++] = root;
+    }
 
     while (head < tail) {
         const int32_t si = S.queue[head++];

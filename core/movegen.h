@@ -108,6 +108,13 @@ struct MoveList {
 // needs placements and spin flags, never paths; only the root move is ever replayed.
 void generateMoves(const Board& b, PieceType p, MoveList* out, bool withPaths = true);
 
+// Test seams. mgForceClassicBfs disables surface seeding so equivalence tests can compare
+// the seeded fast path against the spawn-rooted BFS on the same board; mgApplyActionForTest
+// exposes the BFS's single-action applier so tests can replay emitted paths.
+void mgForceClassicBfs(bool on);
+bool mgApplyActionForTest(const Board& b, PieceType p, Action a, int x, int y, Rot r,
+                          int* nx, int* ny, Rot* nr, uint8_t* nk);
+
 // PRD 4.6 classification. (x, y) is the T's piece origin, NOT its centre mino.
 // Assumes the piece is T; callers must not invoke it for anything else.
 // Exposed for tests.
