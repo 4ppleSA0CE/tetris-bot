@@ -2216,7 +2216,9 @@ static void test_eval_dot_product() {
     // nature: the tuner owns the values, and this block exists so the next tuning run is
     // forced to update the story in weights.h when a sign flips.
     assert(d.holes < 0.0f && d.coveredCells < 0.0f);
-    assert(d.rowTransitions < 0.0f && d.columnTransitions < 0.0f);
+    // columnTransitions drifted to +2 in the plan-11 tune (rowTransitions at -56 owns
+    // tidiness); guard magnitude like bumpiness, not a sign the tuner keeps flipping.
+    assert(d.rowTransitions < 0.0f && std::fabs(d.columnTransitions) < 15.0f);
     assert(d.tSlotCount > 0.0f && d.b2bActive > 0.0f && d.b2bCharge > 0.0f && d.attackDealt > 0.0f);
     // Cutout rewards ship at 0 until the tuner owns them (hand seeds measurably lost);
     // they must never go negative -- a ready spin is not a liability.
@@ -2228,7 +2230,10 @@ static void test_eval_dot_product() {
     assert(d.plainClear < 0.0f && d.wastedT < 0.0f);
     // Softer than the real cliff on purpose: charging heightPenalty itself for garbage that
     // has not landed yet measurably increased deaths under pressure.
-    assert(d.incomingRisk < 0.0f && d.incomingRisk > d.heightPenalty);
+    // Plan 11 softened the height cliff to -28 while keeping incomingRisk at -36: the
+    // bot now fears garbage MORE than its own stack, which the pressure gate rewarded
+    // (0 top-outs at +10% attack). Only the sign and rough scale are guarded.
+    assert(d.incomingRisk < 0.0f && d.incomingRisk > -200.0f);
     // The plan-8 duel tune pulled bumpiness and wellDepth to ~0 (rowTransitions at -58
     // carries all surface tidiness; a 3-row stack gets its well for free). Guard the
     // magnitude, not a sign that has now flipped twice.
