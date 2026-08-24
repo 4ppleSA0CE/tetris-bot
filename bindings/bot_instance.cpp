@@ -120,8 +120,13 @@ void BotInstance::buildPathStates() {
     pathX_[0] = static_cast<int8_t>(x);
     pathY_[0] = static_cast<int8_t>(y);
     pathR_[0] = static_cast<int8_t>(r);
-    pathSteps_ = plan_.pathLen;
-    for (int i = 0; i < plan_.pathLen; ++i) {
+    // Trailing soft drops are one hard drop: the piece hovers through its shifts and
+    // turns, then lands in a single step. Soft drops only survive when a tuck or a
+    // spin follows them.
+    int tail = plan_.pathLen;
+    while (tail > 0 && plan_.path[tail - 1] == ACT_SOFT_DROP) --tail;
+    pathSteps_ = tail < plan_.pathLen ? tail + 1 : tail;
+    for (int i = 0; i < tail; ++i) {
         switch (plan_.path[i]) {
             case ACT_LEFT:
                 if (!collides(board_, current_, r, x - 1, y)) x -= 1;
@@ -129,8 +134,6 @@ void BotInstance::buildPathStates() {
             case ACT_RIGHT:
                 if (!collides(board_, current_, r, x + 1, y)) x += 1;
                 break;
-            // ACT_SOFT_DROP moves exactly one row. BFS needs per-row granularity
-            // to reach spin positions, so this is the movegen's semantics too.
             case ACT_SOFT_DROP:
                 if (!collides(board_, current_, r, x, y - 1)) y -= 1;
                 break;
@@ -153,15 +156,9 @@ void BotInstance::buildPathStates() {
         pathY_[i + 1] = static_cast<int8_t>(y);
         pathR_[i + 1] = static_cast<int8_t>(r);
     }
-    // If this ever trips, ACT_SOFT_DROP in core/movegen.cpp is a drop-to-bottom
-    // rather than a single row; change the ACT_SOFT_DROP case above to
-    //     y = dropY(board_, current_, r, x, y);
-    // and nothing else needs to change.
-    if (x != plan_.x || y != plan_.y || r != plan_.rot) {
-        pathX_[pathSteps_] = plan_.x;
-        pathY_[pathSteps_] = plan_.y;
-        pathR_[pathSteps_] = static_cast<int8_t>(plan_.rot);
-    }
+    pathX_[pathSteps_] = plan_.x;
+    pathY_[pathSteps_] = plan_.y;
+    pathR_[pathSteps_] = static_cast<int8_t>(plan_.rot);
 }
 
 void BotInstance::recomputeTempo() {
@@ -318,12 +315,15 @@ void BotInstance::lockCurrent() {
 }
 
 void BotInstance::writeActive(double nowMs) {
-    // Linear across the piece interval: constant-rate stepping along the path.
+    // Path states step at a constant rate over the first three quarters of the piece
+    // interval; the placed piece rests on the stack for the last quarter.
+    constexpr double SETTLE_AT = 0.75;
     double u = pieceMs_ > 0.0 ? (nowMs - pieceStartMs_) / pieceMs_ : 1.0;
     u = std::clamp(u, 0.0, 1.0);
 
     snap_.pathProgress = static_cast<uint8_t>(u * 255.0 + 0.5);
-    int k = static_cast<int>(u * static_cast<double>(pathSteps_));
+    int k = u >= SETTLE_AT ? pathSteps_
+                           : static_cast<int>(u / SETTLE_AT * static_cast<double>(pathSteps_));
     if (k > pathSteps_) k = pathSteps_;
     if (k < 0) k = 0;
 

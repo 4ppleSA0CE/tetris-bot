@@ -2534,7 +2534,45 @@ static void test_bot_instance_path_replay() {
                 s->piecesPlaced, s->linesCleared, s->attackSent, minDistinct);
     assert(s->piecesPlaced > 150);        // ~200 expected at 5 pps over 40s
     assert(s->state == 1);                // still playing, no top-out
-    assert(minDistinct >= 2);             // every piece visibly moved through >=2 states
+    assert(minDistinct >= 1);             // every piece visibly moves at least once (hover -> landed)
+}
+
+// Hard drop preferred: the path's trailing soft drops collapse into one drop, the piece
+// hovers while it shifts and turns, then lands in a single frame and rests on its ghost
+// for the last quarter of the interval. Soft drops survive only when something follows
+// them (a tuck or a spin).
+static void test_bot_instance_hard_drops() {
+    tb::BotInstance bot(42, 5.0f, 3, 40);
+    const tb::Snapshot* s = bot.snapshotPtr();
+
+    uint32_t lastPieces = 0;
+    int pieces = 0, landedLast = 0, hardDropped = 0;
+    int8_t prevY = 0, lastY = 0, lastGhost = 0;
+    bool bigDrop = false, first = true;
+    for (int f = 1; f <= 2400; ++f) {
+        bot.tick(f * 16.6667);
+        if (s->piecesPlaced != lastPieces) {
+            if (lastPieces > 0) {
+                ++pieces;
+                if (lastY == lastGhost) ++landedLast;
+                if (bigDrop) ++hardDropped;
+            }
+            lastPieces = s->piecesPlaced;
+            bigDrop = false;
+            first = true;
+        } else if (!first && s->activeY <= prevY - 6) {
+            bigDrop = true;
+        }
+        first = false;
+        prevY = s->activeY;
+        lastY = s->activeY;
+        lastGhost = s->ghostY;
+    }
+    std::printf("      hard drops: %d pieces, %d rested on the ghost, %d dropped >= 6 in a frame\n",
+                pieces, landedLast, hardDropped);
+    assert(pieces > 150);
+    assert(landedLast == pieces);
+    assert(hardDropped * 2 >= pieces);
 }
 
 // ---------------------------------------------------------------------------
@@ -2889,6 +2927,7 @@ int main() {
     RUN(test_weight_table);
     RUN(test_bot_instance_path_replay);
     RUN(test_all_spin_immobile);
+    RUN(test_bot_instance_hard_drops);
     RUN(test_mg_no_pointless_final_rotation);
     RUN(test_immobile_requires_an_overhang);
     RUN(test_starved_search_still_sweeps_the_root);

@@ -51,7 +51,7 @@ public:
 
 private:
     void plan();               // search, install the next placement, replay its path
-    void buildPathStates();    // fill pathX_/pathY_/pathR_ by replaying plan_.path
+    void buildPathStates();    // replay plan_.path into pathX_/pathY_/pathR_, drop tail collapsed
     void recomputeTempo();     // pieceMs_ from pps_
     void lockCurrent();        // apply plan_, fire events, advance the queue
     void writeActive(double nowMs);
