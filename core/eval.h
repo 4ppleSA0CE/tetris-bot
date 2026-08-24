@@ -47,7 +47,10 @@ Weights defaultWeights();
 // Terminal board evaluation. Weights carry their own sign, so this is a plain dot product.
 // attackDealt, plainClear and wastedT are NOT applied here: they are applied per node by the
 // search, discounted by gamma to the depth of the placement that earned them (PRD 4.5).
-float evaluate(const Board& b, const Weights& w, int b2bCount);
+// pendingRise = incoming garbage lines not yet cancelled on this path: the height cliff is
+// charged as if they had already risen under the stack (heightPenalty only - never the
+// positive maxHeight build reward, which would pay the bot for being under attack).
+float evaluate(const Board& b, const Weights& w, int b2bCount, int pendingRise = 0);
 
 int countTSlots(const Board& b);
 

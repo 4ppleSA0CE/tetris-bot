@@ -75,13 +75,15 @@ Weights defaultWeights() {
     return w;
 }
 
-float evaluate(const Board& b, const Weights& w, int b2bCount) {
+float evaluate(const Board& b, const Weights& w, int b2bCount, int pendingRise) {
     const Features f = extractFeatures(b);
+    int e = f.maxHeight + pendingRise - HEIGHT_PENALTY_THRESHOLD;
+    if (e < 0) e = 0;   // pendingRise == 0 reproduces f.heightPenalty exactly
     return w.holes             * static_cast<float>(f.holes)
          + w.coveredCells      * static_cast<float>(f.coveredCells)
          + w.bumpiness         * static_cast<float>(f.bumpiness)
          + w.maxHeight         * static_cast<float>(f.maxHeight)
-         + w.heightPenalty     * static_cast<float>(f.heightPenalty)
+         + w.heightPenalty     * static_cast<float>(e * e)
          + w.rowTransitions    * static_cast<float>(f.rowTransitions)
          + w.columnTransitions * static_cast<float>(f.columnTransitions)
          + w.wellDepth         * static_cast<float>(f.wellDepth)

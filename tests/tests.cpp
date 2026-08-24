@@ -2001,6 +2001,12 @@ static void test_eval_dot_product() {
     assert(std::fabs(tb::evaluate(b, ones, 4) - 44.0f) < 1e-3f);
     assert(std::fabs(tb::evaluate(b, ones, 5) - 48.0f) < 1e-3f);
 
+    // pendingRise charges the height cliff as if the garbage had already risen: fixB has
+    // maxHeight 4, so rise 8 still clears the threshold (12), rise 9 is one over, rise 10 two.
+    assert(std::fabs(tb::evaluate(b, ones, 0, 8) - 43.0f) < 1e-3f);
+    assert(std::fabs(tb::evaluate(b, ones, 0, 9) - 44.0f) < 1e-3f);
+    assert(std::fabs(tb::evaluate(b, ones, 0, 10) - 47.0f) < 1e-3f);
+
     // A single non-zero weight isolates a single feature.
     tb::Weights onlyHoles{};
     onlyHoles.holes = -2.0f;
