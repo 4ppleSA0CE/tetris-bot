@@ -31,6 +31,11 @@ namespace tb {
 // Acceptance, seed 42 x 10000 at the shipped budget: attack 6005 (surge 1647), spins 18.3
 // per 100, max b2b 59, top-outs 0, p99 4.5 ms, avg height 5.2, max height 19.
 //
+// A plan-7 refinement (15 more CE generations after the transposition fold; holes -84,
+// maxHeight 18) gained +0.07 attack/piece solo and was REJECTED: 14 vs 3 top-outs under
+// 4/16 and a 35-45 duel loss (LOS 0.13). Solo-attack fitness over-values aggression the
+// duel punishes - gate every future vector with tools/duel.py, not bench.py alone.
+//
 // STYLE CHANGED with the retune: the plan-5 vector breathed at 8-9 rows; this one plays a
 // low stack (avg ~5.2) with a kept well - more Cold-Clear-shaped. If PRD 1.1's taller
 // climb-and-collapse look ever matters more than attack, retune with a height term in the
