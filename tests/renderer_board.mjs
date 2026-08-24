@@ -100,3 +100,22 @@ assert.equal(bare.ops.filter((o) => o.op === 'fillText').length, 0,
 r.destroy();
 r2.destroy();
 console.log(`renderer board OK: ${insideWell.length} in-well cells, ${previews.length} preview, 4 ghost, 0 accent`);
+
+// Every preview is top-aligned in its slot: O (rows 0-1 of a 2x2 box) and I (row 2 of a
+// 4x4 box) must line up with the 3x3 pieces (rows 1-2), so consecutive queue tops are
+// evenly spaced.
+{
+  const c = makeCanvas(360, 720, TEST_VARS);
+  const rr = createRenderer({ canvas: c, layout: 'demo', chrome: 'full' });
+  rr.resize();
+  rr.draw(fakeSnapshot({ holdPiece: -1, queue: Int8Array.from([3, 4, 0, 5, 6]) }));
+  const wr = c.ops.find((o) => o.op === 'strokeRect' && o.strokeStyle === TEST_VARS['--bot-grid']);
+  const right = wr.args[0] + wr.args[2];
+  const tops = [3, 4, 0, 5, 6].map((p) => Math.min(...c.ops
+    .filter((o) => o.op === 'fillRect' && o.fillStyle === PIECE_VARS[p] && o.args[0] >= right)
+    .map((o) => o.args[1])));
+  const gaps = tops.slice(1).map((t, i) => t - tops[i]);
+  assert.ok(gaps.every((gp) => gp === gaps[1]),
+    `preview tops are not evenly spaced (O, S, I, T, Z): ${JSON.stringify(tops)}`);
+  console.log('renderer board OK: previews top-aligned');
+}

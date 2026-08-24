@@ -240,9 +240,11 @@ function drawMiniPiece(
   if (piece < 0) return;
   ctx.fillStyle = pieceFill(th, piece, th.cell);
   const cells = getPieceCells(piece, 0);
+  let top = 0;
+  for (let i = 1; i < cells.length; i += 2) top = Math.max(top, cells[i] ?? 0);
   for (let i = 0; i < cells.length; i += 2) {
     const dx = cells[i] ?? 0;
-    const dy = cells[i + 1] ?? 0;
+    const dy = (cells[i + 1] ?? 0) + 2 - top;   // top-align: box rows differ per piece
     ctx.fillRect(px + dx * unit, py - dy * unit, unit - CELL_GAP, unit - CELL_GAP);
   }
 }
