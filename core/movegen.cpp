@@ -265,14 +265,13 @@ void generateMoves(const Board& b, PieceType p, MoveList* out) {
         uint8_t kick = 255;
 
         if (S.parent[si] >= 0 && isRotateAction(static_cast<Action>(S.via[si]))) {
-            // The BFS tree already arrives by a rotation, and it is shortest.
             len = mgRecoverPath(S, si, buf);
             lastRot = true;
             kick = S.kick[si];
-        } else if (S.rotSrc[si] >= 0) {
-            // Tie-break (PRD 4.4): a rotation-last path beats a translation-last
-            // one even when it is longer, or the spin flag is lost on a
-            // placement that legitimately earned it.
+        } else if (S.rotSrc[si] >= 0 &&
+                   classifySpin(b, p, sr, sx, sy, true, S.rotKick[si]) != SPIN_NONE) {
+            // Tie-break (PRD 4.4): a longer rotation-last path is kept only when the
+            // rotation earns a spin; otherwise the shortest path ends in a drop.
             const int srcLen = mgRecoverPath(S, S.rotSrc[si], buf);
             if (srcLen >= 0 && srcLen < MAX_PATH_LEN) {
                 buf[srcLen] = static_cast<Action>(S.rotAct[si]);

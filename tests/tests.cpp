@@ -1293,6 +1293,23 @@ static void test_mg_every_placement_is_legal_and_grounded() {
     }
 }
 
+// The rotation-last tie-break exists to keep a spin flag; a rotation that earns no spin
+// must not be kept. On an empty board nothing can spin, so no path ends in a rotation.
+static void test_mg_no_pointless_final_rotation() {
+    static tb::MoveList ml;
+    for (int pi = 0; pi < tb::NUM_PIECES; ++pi) {
+        const tb::PieceType p = static_cast<tb::PieceType>(pi);
+        tb::generateMoves(tb::Board{}, p, &ml);
+        for (int i = 0; i < ml.count; ++i) {
+            const tb::Placement& pl = ml.items[i];
+            assert(pl.spin == tb::SPIN_NONE);
+            assert(pl.pathLen > 0);
+            assert(!tb::isRotateAction(pl.path[pl.pathLen - 1]));
+            assert(!pl.lastWasRotation);
+        }
+    }
+}
+
 // A board whose spawn row is blocked yields no moves rather than garbage.
 static void test_mg_topped_out_board_yields_nothing() {
     tb::Board b{};
@@ -1436,14 +1453,12 @@ static void test_mg_every_path_replays_to_its_placement() {
 
 // ------------------------------------------------- movegen: rotation tie-break
 
-// A flat floor with a step at x = 2. The T placement at origin (2, 0) ROT_0 is
-// grounded on that step, and it is reachable two ways:
-//   * translation-last, in 23 actions (2 lefts + 21 soft drops) -- what plain
-//     BFS finds first, and its last action is a soft drop or a left;
-//   * rotation-last, in 25 actions (rotate at spawn, 2 lefts, 21 soft drops,
-//     rotate again) -- the arrival the rule requires.
-// The rotation-last one must win even though it is two actions longer.
-static void test_mg_rotation_last_path_wins_tie_break() {
+// A flat floor with a step at x = 2. The T placement at origin (2, 0) ROT_0 is grounded
+// on that step and reachable two ways: translation-last in 23 actions (2 lefts + 21
+// soft drops), or rotation-last in 25 (rotate at spawn, 2 lefts, 21 drops, rotate
+// back). The corners are nowhere near three, so the rotation earns nothing and the
+// shortest path must win - it ends in a drop, which the renderer turns into a hard drop.
+static void test_mg_shortest_path_wins_when_rotation_earns_no_spin() {
     const char* rows[] = {
         "..........",   // y = 3
         "..........",   // y = 2
@@ -1460,26 +1475,10 @@ static void test_mg_rotation_last_path_wins_tie_break() {
         if (pl.x == 2 && pl.y == 0 && pl.rot == tb::ROT_0) found = &pl;
     }
     assert(found != nullptr);
-    if (!found->lastWasRotation)
-        std::printf("tie-break lost: (2,0,ROT_0) arrived via action %u, len %u\n",
-                    static_cast<unsigned>(found->path[found->pathLen - 1]),
-                    static_cast<unsigned>(found->pathLen));
-    assert(found->lastWasRotation);
-    assert(found->pathLen > 0);
-    assert(tb::isRotateAction(found->path[found->pathLen - 1]));
-    // 24 actions to reach (2,0) in a non-spawn rotation, plus the final rotate.
-    assert(found->pathLen == 25);
-    // The corners here are nowhere near three, so this is still not a spin --
-    // the rule is about preserving the flag, not about inventing spins.
+    assert(!found->lastWasRotation);
+    assert(found->pathLen == 23);
+    assert(found->path[found->pathLen - 1] == tb::ACT_SOFT_DROP);
     assert(found->spin == tb::SPIN_NONE);
-
-    // And the winning path must still be a real path.
-    int rx = 0, ry = 0;
-    tb::Rot rr = tb::ROT_0;
-    uint8_t rk = 200;
-    bool rlast = false;
-    assert(mgReplayPath(b, tb::PIECE_T, *found, &rx, &ry, &rr, &rk, &rlast));
-    assert(rx == 2 && ry == 0 && rr == tb::ROT_0 && rlast);
 }
 
 // ------------------------------------------------------ movegen: T-spin fixtures
@@ -2854,7 +2853,7 @@ int main() {
     RUN(test_mg_every_placement_is_legal_and_grounded);
     RUN(test_mg_topped_out_board_yields_nothing);
     RUN(test_mg_every_path_replays_to_its_placement);
-    RUN(test_mg_rotation_last_path_wins_tie_break);
+    RUN(test_mg_shortest_path_wins_when_rotation_earns_no_spin);
     RUN(test_mg_tspin_single_fixture);
     RUN(test_mg_tspin_double_fixture);
     RUN(test_mg_tspin_triple_fixture);
@@ -2890,6 +2889,7 @@ int main() {
     RUN(test_weight_table);
     RUN(test_bot_instance_path_replay);
     RUN(test_all_spin_immobile);
+    RUN(test_mg_no_pointless_final_rotation);
     RUN(test_immobile_requires_an_overhang);
     RUN(test_starved_search_still_sweeps_the_root);
     RUN(test_uniform_pacing);
