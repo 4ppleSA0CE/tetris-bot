@@ -37,13 +37,16 @@ struct Weights {
     float b2bCharge;          // per line of Surge the live chain holds (surgeCharge)
     float rowsWithHoles;
     float overhangs;          // positive: a side-reachable hole is cheaper than an enclosed one
+    // Move terms, applied per placement by the search like attackDealt, never by evaluate().
+    float plainClear;         // per clear that is not b2bMaintaining (breaks or wastes the chain)
+    float wastedT;            // per T placed without a spin
 };
 
 Weights defaultWeights();
 
 // Terminal board evaluation. Weights carry their own sign, so this is a plain dot product.
-// attackDealt is NOT applied here: it is applied per node by the search, discounted by gamma
-// to the depth of the placement that earned it (PRD 4.5).
+// attackDealt, plainClear and wastedT are NOT applied here: they are applied per node by the
+// search, discounted by gamma to the depth of the placement that earned them (PRD 4.5).
 float evaluate(const Board& b, const Weights& w, int b2bCount);
 
 int countTSlots(const Board& b);

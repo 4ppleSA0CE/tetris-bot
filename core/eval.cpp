@@ -70,6 +70,8 @@ Weights defaultWeights() {
     w.b2bCharge         = W_B2B_CHARGE;
     w.rowsWithHoles     = W_ROWS_WITH_HOLES;
     w.overhangs         = W_OVERHANGS;
+    w.plainClear        = W_PLAIN_CLEAR;
+    w.wastedT           = W_WASTED_T;
     return w;
 }
 
@@ -88,8 +90,8 @@ float evaluate(const Board& b, const Weights& w, int b2bCount) {
          + w.overhangs         * static_cast<float>(f.overhangs)
          + w.b2bActive         * (b2bCount > 0 ? 1.0f : 0.0f)
          + w.b2bCharge         * static_cast<float>(surgeCharge(b2bCount));
-    // NOTE: w.attackDealt is intentionally absent. Attack is a per-move reward applied by
-    // the search with the gamma discount (PRD 4.5), not a property of the terminal board.
+    // attackDealt, plainClear and wastedT are per-move rewards applied by the search with
+    // the gamma discount (PRD 4.5), not properties of the terminal board.
 }
 
 Features extractFeatures(const Board& b) {
@@ -182,6 +184,8 @@ const WeightEntry kWeightTable[] = {
     { "b2bCharge",         &Weights::b2bCharge },
     { "rowsWithHoles",     &Weights::rowsWithHoles },
     { "overhangs",         &Weights::overhangs },
+    { "plainClear",        &Weights::plainClear },
+    { "wastedT",           &Weights::wastedT },
 };
 constexpr int kWeightCount = static_cast<int>(sizeof(kWeightTable) / sizeof(kWeightTable[0]));
 

@@ -32,6 +32,8 @@ float* bindingsWeightSlot(Weights& w, int index) {
         case 11: return &w.b2bCharge;
         case 12: return &w.rowsWithHoles;
         case 13: return &w.overhangs;
+        case 14: return &w.plainClear;
+        case 15: return &w.wastedT;
         default: return nullptr;
     }
 }

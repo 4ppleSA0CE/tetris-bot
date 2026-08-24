@@ -1988,6 +1988,7 @@ static void test_eval_dot_product() {
     ones.columnTransitions = 1.0f; ones.wellDepth = 1.0f; ones.tSlotCount = 1.0f;
     ones.b2bActive = 1.0f; ones.b2bCharge = 1.0f; ones.attackDealt = 1.0f;
     ones.rowsWithHoles = 1.0f; ones.overhangs = 1.0f;
+    ones.plainClear = 1.0f; ones.wastedT = 1.0f;   // move terms: applied by the search, not here
 
     // FIX_B: holes 3 + covered 5 + bumpiness 4 + maxHeight 4 + heightPenalty 0
     //      + rowTransitions 12 + columnTransitions 12 + wellDepth 0 + tSlots 0
@@ -2018,6 +2019,7 @@ static void test_eval_dot_product() {
     // positive but never outweighs holes itself.
     assert(d.rowsWithHoles < 0.0f);
     assert(d.overhangs > 0.0f && d.overhangs < -d.holes);
+    assert(d.plainClear < 0.0f && d.wastedT < 0.0f);
 
     // maxHeight is the ONE deliberate exception, and it is asserted positive rather than
     // simply dropped from the check -- an accidental flip back to negative must still fail
@@ -2052,7 +2054,7 @@ static void test_weight_by_name() {
     assert(!tb::setWeightByName(w, "tSlotCounts", 1.0f));
 
     // the name table is exhaustive and every listed name is settable
-    assert(tb::weightNameCount() == 14);
+    assert(tb::weightNameCount() == 16);
     for (int i = 0; i < tb::weightNameCount(); ++i) {
         assert(tb::setWeightByName(w, tb::weightName(i), 1.0f));
     }
@@ -2212,6 +2214,53 @@ static void test_search_prefers_hold_when_better() {
     tb::Board after2 = b;
     tb::lockPiece(after2, tb::PIECE_I, r2.placement.rot, r2.placement.x, r2.placement.y);
     assert(tb::clearLines(after2) == 4);
+}
+
+static void test_search_plain_clear_penalty() {
+    // Bottom row missing only column 9: a vertical I there is a plain (non-B2B) single.
+    tb::Board b{};
+    b.rows[0] = (uint16_t)(tb::FULL_ROW & ~(1u << 9));
+    static tb::MoveList ml;
+    tb::generateMoves(b, tb::PIECE_I, &ml);
+    bool canClear = false;
+    for (int i = 0; i < ml.count; ++i) {
+        tb::Board c = b;
+        tb::lockPiece(c, tb::PIECE_I, ml.items[i].rot, ml.items[i].x, ml.items[i].y);
+        if (tb::clearLines(c) == 1) canClear = true;
+    }
+    assert(canClear);
+
+    tb::PieceType queue[tb::PREVIEW_LEN] = {
+        tb::PIECE_O, tb::PIECE_O, tb::PIECE_O, tb::PIECE_O, tb::PIECE_O
+    };
+    tb::SearchConfig cfg;
+    cfg.timeBudgetMs = 1e9f;
+    cfg.depth = 1;
+    cfg.weights.plainClear = -1.0e6f;
+    tb::SearchResult r = tb::search(b, tb::PIECE_I, tb::PIECE_NONE, queue,
+                                    tb::PREVIEW_LEN, 0, 0, cfg);
+    assert(r.valid);
+    const tb::PieceType placed = r.useHold ? queue[0] : tb::PIECE_I;
+    tb::Board after = b;
+    tb::lockPiece(after, placed, r.placement.rot, r.placement.x, r.placement.y);
+    assert(tb::clearLines(after) == 0);
+}
+
+static void test_search_wasted_t() {
+    // A flat T on an empty board is a wasted T. With the penalty huge the search banks it
+    // in hold and places the I instead.
+    tb::Board b{};
+    tb::PieceType queue[tb::PREVIEW_LEN] = {
+        tb::PIECE_I, tb::PIECE_O, tb::PIECE_L, tb::PIECE_J, tb::PIECE_Z
+    };
+    tb::SearchConfig cfg;
+    cfg.timeBudgetMs = 1e9f;
+    cfg.depth = 1;
+    cfg.weights.wastedT = -1.0e6f;
+    tb::SearchResult r = tb::search(b, tb::PIECE_T, tb::PIECE_NONE, queue,
+                                    tb::PREVIEW_LEN, 0, 0, cfg);
+    assert(r.valid);
+    assert(r.useHold);
 }
 
 static void test_search_topout_semantics() {
@@ -2583,18 +2632,19 @@ static void test_snapshot_layout() {
 // the wrong feature through JS.
 // ---------------------------------------------------------------------------
 static void test_weight_table() {
-    assert(tb::weightNameCount() == 14);
-    static const char* expected[14] = {
+    assert(tb::weightNameCount() == 16);
+    static const char* expected[16] = {
         "holes", "coveredCells", "bumpiness", "maxHeight", "heightPenalty",
         "rowTransitions", "columnTransitions", "wellDepth", "tSlotCount",
-        "b2bActive", "attackDealt", "b2bCharge", "rowsWithHoles", "overhangs"
+        "b2bActive", "attackDealt", "b2bCharge", "rowsWithHoles", "overhangs",
+        "plainClear", "wastedT"
     };
     for (int i = 0; i < tb::weightNameCount(); ++i) {
         assert(std::string(tb::weightName(i)) == expected[i]);
     }
     // core/eval.h's out-of-range contract is the empty string, NOT nullptr.
     assert(tb::weightName(-1)[0] == '\0');
-    assert(tb::weightName(14)[0] == '\0');
+    assert(tb::weightName(16)[0] == '\0');
 
     // The bridge and setWeightByName must agree, index for index.
     for (int i = 0; i < tb::weightNameCount(); ++i) {
@@ -2607,7 +2657,7 @@ static void test_weight_table() {
     }
     tb::Weights w = tb::defaultWeights();
     assert(tb::bindingsWeightSlot(w, -1) == nullptr);
-    assert(tb::bindingsWeightSlot(w, 14) == nullptr);
+    assert(tb::bindingsWeightSlot(w, 16) == nullptr);
     assert(tb::bindingsWeightSlot(w, 0) == &w.holes);        // spot-check the two ends
     assert(tb::bindingsWeightSlot(w, 10) == &w.attackDealt);
 }
@@ -3030,6 +3080,8 @@ int main() {
     RUN(test_search_is_anytime);
     RUN(test_search_uses_full_depth);
     RUN(test_search_prefers_hold_when_better);
+    RUN(test_search_plain_clear_penalty);
+    RUN(test_search_wasted_t);
     RUN(test_search_topout_semantics);
     RUN(test_search_time_budget);
     RUN(test_game_steps);

@@ -74,4 +74,10 @@ constexpr float W_ROWS_WITH_HOLES = -40.0f;
 // Partial refund of W_HOLES for holes a piece can still slide into from the side.
 constexpr float W_OVERHANGS = 30.0f;
 
+// Move terms (every versus bot has them: Cold Clear clear1..3 / wasted_t, ZZZ, Hikari).
+// A clear that does not maintain B2B spends stack for little attack; a T without a spin
+// spends the piece the whole T-slot economy is built around.
+constexpr float W_PLAIN_CLEAR = -50.0f;
+constexpr float W_WASTED_T    = -80.0f;
+
 } // namespace tb
