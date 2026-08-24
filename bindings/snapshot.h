@@ -61,6 +61,9 @@ struct Snapshot {
     // than by core/: the colour of a settled cell is a presentation concern, and
     // core's Board stays a pure bitmask because that is what makes the search fast.
     uint8_t  cellPiece[BOARD_CELLS];
+    // Incoming garbage lines queued but not yet risen (plan 10 amendment). Appended after
+    // cellPiece so no existing field moves; the trailing padding absorbs the byte.
+    uint8_t  pendingGarbage;
 };
 
 constexpr int SNAPSHOT_MAX_EVENTS = 8;
@@ -77,5 +80,6 @@ static_assert(offsetof(Snapshot, pathProgress) == 90, "Snapshot.pathProgress mov
 static_assert(offsetof(Snapshot, events) == 98, "Snapshot.events moved");
 static_assert(offsetof(Snapshot, state) == 152, "Snapshot.state moved");
 static_assert(offsetof(Snapshot, cellPiece) == 153, "Snapshot.cellPiece moved");
+static_assert(offsetof(Snapshot, pendingGarbage) == 553, "Snapshot.pendingGarbage moved");
 
 } // namespace tb

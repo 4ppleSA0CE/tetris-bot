@@ -80,6 +80,8 @@ void BotInstance::reset(uint32_t seed) {
     std::memset(cellPiece_, CELL_EMPTY, sizeof(cellPiece_));
     std::memset(&snap_, 0, sizeof(snap_));
     hold_    = PIECE_NONE;
+    garbageRng_ = (seed ^ 0x5DEECE66u) == 0u ? 0x9E3779B9u : (seed ^ 0x5DEECE66u);
+    pendingGarbage_ = 0;
     current_ = bag_.next();
     for (int i = 0; i < PREVIEW_LEN; ++i) queue_[i] = bag_.next();
     comboCount_ = 0;
@@ -99,6 +101,22 @@ void BotInstance::reset(uint32_t seed) {
     snap_.holdPiece = PIECE_NONE;
     snap_.activePiece = PIECE_NONE;
     snap_.state = 0;
+    writeStats();
+}
+
+void BotInstance::queueGarbage(int lines) {
+    if (lines < 1 || toppedOut_) return;
+    if (lines > 20) lines = 20;
+    pendingGarbage_ = pendingGarbage_ > 255 - lines ? 255 : pendingGarbage_ + lines;
+    if (planValid_) {
+        // Rewind plan()'s hold swap (and bag draw), then replan with the new pending
+        // lines -- exactly the state core Game searches from, so parity holds.
+        hold_    = prePlanHold_;
+        current_ = prePlanCurrent_;
+        for (int i = 0; i < PREVIEW_LEN; ++i) queue_[i] = prePlanQueue_[i];
+        bag_ = prePlanBag_;
+        planValid_ = false;
+    }
     writeStats();
 }
 
@@ -174,8 +192,13 @@ void BotInstance::plan() {
     if (toppedOut_) return;
     if (collides(board_, current_, ROT_0, SPAWN_X, SPAWN_Y)) { topOut(); return; }
 
+    prePlanHold_    = hold_;
+    prePlanCurrent_ = current_;
+    for (int i = 0; i < PREVIEW_LEN; ++i) prePlanQueue_[i] = queue_[i];
+    prePlanBag_ = bag_;
+
     const SearchResult r = search(board_, current_, hold_, queue_, PREVIEW_LEN,
-                                  b2bCount_, comboCount_, cfg_);
+                                  b2bCount_, comboCount_, cfg_, pendingGarbage_);
     if (!r.valid) { topOut(); return; }
 
     if (r.useHold) {
@@ -244,7 +267,8 @@ void BotInstance::lockCurrent() {
     ci.spin         = plan_.spin;
     ci.perfectClear = (lines > 0) && isEmpty(board_);
 
-    attackSent_   += static_cast<uint32_t>(computeAttack(ci, b2bCount_, comboCount_));
+    const int atk = computeAttack(ci, b2bCount_, comboCount_);
+    attackSent_   += static_cast<uint32_t>(atk);
     linesCleared_ += static_cast<uint32_t>(lines);
     piecesPlaced_ += 1;
 
@@ -299,6 +323,30 @@ void BotInstance::lockCurrent() {
     planValid_ = false;
     snap_.pendingSpin = 0;
 
+    // Incoming garbage, core/game.cpp's exact semantics: this piece's attack cancels
+    // pending lines first, the remainder rises now, one row at a time, hole redrawn per
+    // row with probability 0.05 from the same seed-derived RNG. The colour grid shifts
+    // with the board; garbage cells get id 7 (a grey the palette reserves for garbage).
+    if (pendingGarbage_ > 0) {
+        pendingGarbage_ -= atk;
+        if (pendingGarbage_ < 0) pendingGarbage_ = 0;
+    }
+    if (pendingGarbage_ > 0) {
+        const uint32_t redraw = (uint32_t)(0.05f * 10000.0f);
+        int hole = (int)(xorshift32(garbageRng_) % (uint32_t)BOARD_W);
+        for (int i = 0; i < pendingGarbage_; ++i) {
+            if (i > 0 && xorshift32(garbageRng_) % 10000u < redraw)
+                hole = (int)(xorshift32(garbageRng_) % (uint32_t)BOARD_W);
+            addGarbage(board_, 1, hole);
+            std::memmove(&cellPiece_[BOARD_W], &cellPiece_[0],
+                         static_cast<size_t>((BOARD_H - 1) * BOARD_W));
+            for (int x = 0; x < BOARD_W; ++x) {
+                cellPiece_[x] = (x == hole) ? CELL_EMPTY : (uint8_t)7;
+            }
+        }
+        pendingGarbage_ = 0;
+    }
+
     ppsWindowPieces_ += 1;
     const double win = lastNowMs_ - ppsWindowStartMs_;
     if (win >= 1000.0) {
@@ -350,6 +398,7 @@ void BotInstance::writeStats() {
     snap_.attackSent   = attackSent_;
     snap_.b2bCount     = b2bCount_;
     snap_.comboCount   = static_cast<uint16_t>(comboCount_);
+    snap_.pendingGarbage = static_cast<uint8_t>(pendingGarbage_ > 255 ? 255 : pendingGarbage_);
 }
 
 void BotInstance::tick(double nowMs) {

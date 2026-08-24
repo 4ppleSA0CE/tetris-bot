@@ -45,6 +45,11 @@ public:
     // sets this high enough that the budget is never reached.
     void setTimeBudget(float ms);
     void reset(uint32_t seed);
+    // Queue incoming garbage. Invalidates the current plan so the search reacts to the
+    // threat immediately -- Game's search-and-lock is atomic, so this is what keeps the
+    // Game/BotInstance parity exact. Applied at the next lock: attack cancels first,
+    // the remainder rises with core Game's exact RNG and messiness.
+    void queueGarbage(int lines);
 
     const Snapshot* snapshotPtr() const { return &snap_; }
     uint32_t seed() const { return seed_; }
@@ -78,6 +83,15 @@ private:
     uint32_t piecesPlaced_ = 0;
     uint32_t linesCleared_ = 0;
     uint32_t attackSent_   = 0;
+    int      pendingGarbage_ = 0;
+    uint32_t garbageRng_     = 0;
+    // Pre-plan piece state, saved before plan()'s hold swap so queueGarbage can rewind
+    // the swap (and its bag draw) and replan with the new pending lines. Without the
+    // rewind a replan would search from post-swap state and diverge from core Game.
+    PieceType prePlanHold_    = PIECE_NONE;
+    PieceType prePlanCurrent_ = PIECE_NONE;
+    PieceType prePlanQueue_[PREVIEW_LEN]{};
+    Bag       prePlanBag_{0};
     bool     toppedOut_    = false;
 
     Placement plan_{};

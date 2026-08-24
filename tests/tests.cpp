@@ -3083,6 +3083,14 @@ static void test_game_bot_instance_parity() {
     int matched = 0;
 
     for (int p = 1; p <= kPieces; ++p) {
+        // Same garbage into both every 10th piece. queueGarbage invalidates the bot's
+        // pre-made plan, so both searches see the pending lines and both locks apply
+        // them -- byte-identical boards is the whole assertion.
+        if (p % 10 == 0) {
+            const int k = 1 + (p / 10) % 4;
+            game.queueGarbage(k);
+            bot.queueGarbage(k);
+        }
         game.stepPiece();
         if (game.toppedOut()) break;
 

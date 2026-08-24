@@ -51,6 +51,7 @@ std::string getSnapshotLayout() {
     s += LAY(pps,          "f32", 1);   s += ",";
     s += LAY(state,        "u8",  1);   s += ",";
     s += LAY(cellPiece,    "u8",  400); s += ",";
+    s += LAY(pendingGarbage, "u8", 1);  s += ",";
     s += ELAY(type,  "u8");  s += ",";
     s += ELAY(param, "u8");  s += ",";
     s += ELAY(frame, "u16");
@@ -153,6 +154,11 @@ bool botReset(int32_t h, int32_t seed) {
     return false;
 }
 
+bool botQueueGarbage(int32_t h, int32_t lines) {
+    if (auto* b = look(h)) { b->queueGarbage(lines); return true; }
+    return false;
+}
+
 bool    botDestroy(int32_t h) { return g_bots.erase(h) > 0; }
 int32_t botLiveCount()        { return static_cast<int32_t>(g_bots.size()); }
 
@@ -171,6 +177,7 @@ EMSCRIPTEN_BINDINGS(tetris_bot_layout) {
     function("botSetPPS",      &botSetPPS);
     function("botSetWeight",   &botSetWeight);
     function("botReset",       &botReset);
+    function("botQueueGarbage", &botQueueGarbage);
     function("botDestroy",     &botDestroy);
     function("botLiveCount",   &botLiveCount);
 }
