@@ -19,6 +19,7 @@ struct Node {
     int8_t    queueIdx;      // index of the next unplaced piece in seq[]
     uint8_t   b2bCount;
     uint8_t   combo;
+    uint8_t   remaining;     // incoming garbage lines this path has not yet cancelled
     float     pathReward;    // sum of discounted move rewards (attack, plain clear, wasted T)
     float     score;         // pathReward + evaluate(terminal board)
     int16_t   rootIdx;       // which depth-0 move this path started with; -1 at the root
@@ -65,7 +66,8 @@ inline bool aboveField(const Board& b) {
 
 SearchResult search(const Board& b, PieceType current, PieceType hold,
                     const PieceType* queue, int queueLen,
-                    int b2bCount, int comboCount, const SearchConfig& cfg)
+                    int b2bCount, int comboCount, const SearchConfig& cfg,
+                    int incoming)
 {
     const auto t0 = std::chrono::steady_clock::now();
     const double budgetMs   = (double)cfg.timeBudgetMs;
@@ -100,6 +102,7 @@ SearchResult search(const Board& b, PieceType current, PieceType hold,
     cur[0].queueIdx    = 0;
     cur[0].b2bCount    = (uint8_t)(b2bCount < 0 ? 0 : (b2bCount > 255 ? 255 : b2bCount));
     cur[0].combo       = (uint8_t)(comboCount < 0 ? 0 : (comboCount > 255 ? 255 : comboCount));
+    cur[0].remaining   = (uint8_t)(incoming < 0 ? 0 : (incoming > 255 ? 255 : incoming));
     cur[0].pathReward  = 0.0f;
     cur[0].score       = 0.0f;
     cur[0].rootIdx     = -1;
@@ -178,11 +181,14 @@ SearchResult search(const Board& b, PieceType current, PieceType hold,
                     child.combo       = (lines > 0)
                                           ? (uint8_t)(parent.combo < 255 ? parent.combo + 1 : 255)
                                           : (uint8_t)0;
+                    child.remaining   = (uint8_t)(parent.remaining > atk
+                                          ? parent.remaining - atk : 0);
                     float reward = cfg.weights.attackDealt * (float)atk;
                     if (lines > 0 && !b2bMaintaining(ci))          reward += cfg.weights.plainClear;
                     if (piece == PIECE_T && pl.spin == SPIN_NONE)  reward += cfg.weights.wastedT;
                     child.pathReward = parent.pathReward + reward * discount;
-                    float terminal = evaluate(child.board, cfg.weights, child.b2bCount);
+                    float terminal = evaluate(child.board, cfg.weights, child.b2bCount,
+                                              (int)child.remaining);
                     if (aboveField(child.board)) terminal += TOPOUT_PENALTY;
                     child.score = child.pathReward + terminal;
 

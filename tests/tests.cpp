@@ -2273,6 +2273,45 @@ static void test_search_wasted_t() {
     assert(r.useHold);
 }
 
+static void test_search_incoming_cancel() {
+    // Nine rows with only column 0 open: the sole clearing move is the vertical I quad.
+    // Weights: only the height cliff and a NEGATIVE attack reward (so the quad is avoided
+    // when there is no pressure - this isolates the incoming mechanism).
+    tb::Board b{};
+    for (int y = 0; y < 9; ++y) b.rows[y] = (uint16_t)(tb::FULL_ROW & ~1u);
+    tb::PieceType queue[tb::PREVIEW_LEN] = {
+        tb::PIECE_O, tb::PIECE_O, tb::PIECE_O, tb::PIECE_O, tb::PIECE_O
+    };
+    tb::SearchConfig cfg;
+    cfg.timeBudgetMs = 1e9f;
+    cfg.depth = 1;
+    cfg.weights = tb::Weights{};
+    cfg.weights.heightPenalty = -100.0f;
+    cfg.weights.attackDealt   = -50.0f;
+
+    auto linesOf = [&](const tb::SearchResult& r) {
+        const tb::PieceType placed = r.useHold ? queue[0] : tb::PIECE_I;
+        tb::Board a = b;
+        tb::lockPiece(a, placed, r.placement.rot, r.placement.x, r.placement.y);
+        return tb::clearLines(a);
+    };
+
+    // No pressure: every non-clearing root scores 0 (height 11 is under the cliff), the quad
+    // costs 4 lines of negative attack reward. The search must not clear.
+    tb::SearchResult r0 = tb::search(b, tb::PIECE_I, tb::PIECE_NONE, queue,
+                                     tb::PREVIEW_LEN, 0, 0, cfg, 0);
+    assert(r0.valid);
+    assert(linesOf(r0) == 0);
+
+    // Six lines incoming: a non-clearing root is charged (height + 6 - 12)^2 >= 900, the quad
+    // cancels four of them and ducks under the threshold, costing only its -200 reward.
+    tb::SearchResult r6 = tb::search(b, tb::PIECE_I, tb::PIECE_NONE, queue,
+                                     tb::PREVIEW_LEN, 0, 0, cfg, 6);
+    assert(r6.valid);
+    assert(!r6.useHold);
+    assert(linesOf(r6) == 4);
+}
+
 static void test_search_node_budget() {
     // A node budget cuts the search off deterministically: two runs agree exactly, the count
     // never exceeds the budget by more than one clock-check interval, and depth 0 always
@@ -3159,6 +3198,7 @@ int main() {
     RUN(test_search_prefers_hold_when_better);
     RUN(test_search_plain_clear_penalty);
     RUN(test_search_wasted_t);
+    RUN(test_search_incoming_cancel);
     RUN(test_search_node_budget);
     RUN(test_search_topout_semantics);
     RUN(test_search_time_budget);

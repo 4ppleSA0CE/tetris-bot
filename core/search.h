@@ -44,8 +44,12 @@ struct SearchResult {
 // interrupted, its best partial result is returned instead, so there is always a legal move.
 // Consequence: results are wall-clock dependent whenever the budget is actually reached. For
 // bit-identical replay set timeBudgetMs to something the search cannot reach (1e9f).
+// `incoming` = garbage lines pending against the searcher. Attack earned on a path cancels
+// them first (exactly Game's rule); whatever remains is charged through evaluate()'s
+// pendingRise, so digging under pressure and cancelling both pay off. 0 = solo play.
 SearchResult search(const Board& b, PieceType current, PieceType hold,
                     const PieceType* queue, int queueLen,
-                    int b2bCount, int comboCount, const SearchConfig& cfg);
+                    int b2bCount, int comboCount, const SearchConfig& cfg,
+                    int incoming = 0);
 
 } // namespace tb
