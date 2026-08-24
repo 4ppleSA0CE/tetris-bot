@@ -105,7 +105,7 @@ def main():
                 cand = fmt(names, pop[i])
                 if kind == 'solo':
                     r = run(cand, sa, a.pieces, '', a.nodes)
-                    return ('solo', r['topouts'], r['attack'])
+                    return ('solo', r['topouts'], r['attack'], r['maxB2b'])
                 wa, wb = (opp, cand) if sw else (cand, opp)
                 r = run_vs(wa, wb, sa, sb, a.duel_cap, a.nodes)
                 cand_a = not sw
@@ -124,9 +124,11 @@ def main():
                 margin = sum(x[2] for x in chunk if x[0] == 'vs')
                 topo = sum(x[1] for x in chunk if x[0] == 'solo')
                 atk = sum(x[2] for x in chunk if x[0] == 'solo')
-                # Lexicographic: fight parity first, then survive, then ATTACK EFFICIENCY
-                # (the round-6 goal), margin last.
-                fit.append((-score, topo, -atk, -margin, score, atk, margin))
+                b2b = sum(x[3] for x in chunk if x[0] == 'solo')
+                # Lexicographic: fight parity, survival, attack efficiency (round 6),
+                # then CHAIN LENGTH (round 7 -- the tuner cannot want what it is not
+                # scored on), margin last.
+                fit.append((-score, topo, -atk, -b2b, -margin, score, atk, b2b, margin))
             prev_mean = fmt(names, mean)
             seeds = pairs
         else:
@@ -144,7 +146,7 @@ def main():
                 solo, pres = res[2 * i], res[2 * i + 1]
                 fit.append((solo['topouts'] + pres['topouts'], -(solo['attack'] + pres['attack']),
                             solo['attack'], pres['attack']))
-        order = sorted(range(a.pop), key=lambda i: fit[i][:4] if a.duel else fit[i][:2])
+        order = sorted(range(a.pop), key=lambda i: fit[i][:5] if a.duel else fit[i][:2])
         elite = order[:a.elite]
         mean = [sum(pop[i][k] for i in elite) / a.elite for k in range(len(names))]
         var = [sum((pop[i][k] - mean[k]) ** 2 for i in elite) / a.elite for k in range(len(names))]
@@ -153,9 +155,10 @@ def main():
         best = order[0]
         if a.duel:
             games = 2 * a.duel * (1 if gen == 0 else 2)
-            print(f"gen {gen:02d} best score {fit[best][4]:.1f}/{games} "
-                  f"soloAtk {fit[best][5]}  margin {fit[best][6]:+d}  elite-avg score "
-                  f"{sum(fit[i][4] for i in elite) / a.elite:.2f}  incumbent rank {order.index(0)}")
+            print(f"gen {gen:02d} best score {fit[best][5]:.1f}/{games} "
+                  f"soloAtk {fit[best][6]}  maxB2b {fit[best][7]}  margin {fit[best][8]:+d}  "
+                  f"elite-avg score {sum(fit[i][5] for i in elite) / a.elite:.2f}  "
+                  f"incumbent rank {order.index(0)}")
         else:
             print(f"gen {gen:02d} seeds {seeds} best top-outs {fit[best][0]} attack "
                   f"{fit[best][2]}+{fit[best][3]}  elite-avg attack "
