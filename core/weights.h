@@ -87,6 +87,12 @@ constexpr float W_TSLOT_2 = 0.0f;
 
 // Down from plan-6's 241: duels average 88 pieces, so a long-held chain rarely pays out.
 // Spend the chain, send the lines, kill first.
+// Chain-holding levers (plan 12), tuner-owned, shipped inert at 0: b2bLevel pays per held
+// b2b level (min(count, 8)) where Surge charge is still silent; b2bBreak is charged by the
+// search on top of plainClear when a clear kills a LIVE chain.
+constexpr float W_B2B_LEVEL = 0.0f;
+constexpr float W_B2B_BREAK = 0.0f;
+
 constexpr float W_B2B_ACTIVE = 29.2f;
 
 // Per line of Surge the live chain holds. Near the 1:1 attack rate: the horizon argument

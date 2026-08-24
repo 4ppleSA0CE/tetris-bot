@@ -243,7 +243,11 @@ SearchResult search(const Board& b, PieceType current, PieceType hold,
                     child.remaining   = (uint8_t)(parent.remaining > atk
                                           ? parent.remaining - atk : 0);
                     float reward = cfg.weights.attackDealt * (float)atk;
-                    if (lines > 0 && !b2bMaintaining(ci))          reward += cfg.weights.plainClear;
+                    if (lines > 0 && !b2bMaintaining(ci)) {
+                        reward += cfg.weights.plainClear;
+                        // Killing a LIVE chain costs extra: the whole point of plan 12.
+                        if (parent.b2bCount > 0) reward += cfg.weights.b2bBreak;
+                    }
                     if (piece == PIECE_T && pl.spin == SPIN_NONE)  reward += cfg.weights.wastedT;
                     child.pathReward = parent.pathReward + reward * discount;
 

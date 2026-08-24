@@ -2182,6 +2182,7 @@ static void test_eval_dot_product() {
     ones.maxHeight = 1.0f; ones.heightPenalty = 1.0f; ones.rowTransitions = 1.0f;
     ones.columnTransitions = 1.0f; ones.wellDepth = 1.0f; ones.tSlotCount = 1.0f;
     ones.tslot1 = 1.0f; ones.tslot2 = 1.0f;   // cutout counts are 0 at tAvail 0
+    ones.b2bLevel = 1.0f; ones.b2bBreak = 1.0f;   // b2bBreak: move term, inert here
     ones.b2bActive = 1.0f; ones.b2bCharge = 1.0f; ones.attackDealt = 1.0f;
     ones.rowsWithHoles = 1.0f; ones.overhangs = 1.0f;
     ones.plainClear = 1.0f; ones.wastedT = 1.0f;   // move terms: applied by the search, not here
@@ -2194,9 +2195,9 @@ static void test_eval_dot_product() {
     assert(std::fabs(tb::evaluate(b, ones, 0) - 43.0f) < 1e-3f);
     // b2bActive adds one unit of its weight; b2bCharge adds surgeCharge(count) units;
     // attackDealt is NOT applied here
-    assert(std::fabs(tb::evaluate(b, ones, 1) - 44.0f) < 1e-3f);
-    assert(std::fabs(tb::evaluate(b, ones, 4) - 44.0f) < 1e-3f);
-    assert(std::fabs(tb::evaluate(b, ones, 5) - 48.0f) < 1e-3f);
+    assert(std::fabs(tb::evaluate(b, ones, 1) - 45.0f) < 1e-3f);   // active 1 + level 1
+    assert(std::fabs(tb::evaluate(b, ones, 4) - 48.0f) < 1e-3f);   // active 1 + level 4
+    assert(std::fabs(tb::evaluate(b, ones, 5) - 53.0f) < 1e-3f);   // + surge charge 4
 
     // pendingRise charges incomingRisk with the EXTRA cliff area: fixB has maxHeight 4, so
     // rise 8 still clears the threshold (12), rise 9 is one over, rise 10 two.
@@ -2223,6 +2224,9 @@ static void test_eval_dot_product() {
     // Cutout rewards ship at 0 until the tuner owns them (hand seeds measurably lost);
     // they must never go negative -- a ready spin is not a liability.
     assert(d.tslot1 >= 0.0f && d.tslot2 >= d.tslot1);
+    // Plan-12 chain levers, tuner-owned: holding levels is never bad, breaking a live
+    // chain is never good.
+    assert(d.b2bLevel >= 0.0f && d.b2bBreak <= 0.0f);
     // overhangs is a partial refund of holes (side-reachable ones are cheap to fix), so it is
     // positive but never outweighs holes itself.
     assert(d.rowsWithHoles < 0.0f);
@@ -2266,7 +2270,7 @@ static void test_weight_by_name() {
     assert(!tb::setWeightByName(w, "tSlotCounts", 1.0f));
 
     // the name table is exhaustive and every listed name is settable
-    assert(tb::weightNameCount() == 19);
+    assert(tb::weightNameCount() == 21);
     for (int i = 0; i < tb::weightNameCount(); ++i) {
         assert(tb::setWeightByName(w, tb::weightName(i), 1.0f));
     }
@@ -2282,9 +2286,9 @@ static void test_weight_by_name() {
     // weightValue reads back through the same table
     tb::Weights v = tb::defaultWeights();
     assert(tb::setWeightByName(v, "wastedT", -77.0f));
-    assert(std::fabs(tb::weightValue(v, 17) - (-77.0f)) < 1e-6f);   // wastedT moved to 17
+    assert(std::fabs(tb::weightValue(v, 19) - (-77.0f)) < 1e-6f);   // wastedT moved to 19
     assert(std::fabs(tb::weightValue(v, 0) - tb::defaultWeights().holes) < 1e-6f);
-    assert(tb::weightValue(v, -1) == 0.0f && tb::weightValue(v, 19) == 0.0f);
+    assert(tb::weightValue(v, -1) == 0.0f && tb::weightValue(v, 21) == 0.0f);
 }
 
 // ---- Plan 3: search --------------------------------------------------------
@@ -2463,6 +2467,30 @@ static void test_search_plain_clear_penalty() {
     tb::Board after = b;
     tb::lockPiece(after, placed, r.placement.rot, r.placement.x, r.placement.y);
     assert(tb::clearLines(after) == 0);
+}
+
+static void test_search_b2b_break_term() {
+    // Same fixture as the plainClear test: the only clear available is a plain single.
+    // With a LIVE chain and only b2bBreak charged (plainClear neutralized), the search
+    // must refuse to kill the chain for it.
+    tb::Board b{};
+    b.rows[0] = (uint16_t)(tb::FULL_ROW & ~(1u << 9));
+    tb::PieceType queue[tb::PREVIEW_LEN] = {
+        tb::PIECE_O, tb::PIECE_O, tb::PIECE_O, tb::PIECE_O, tb::PIECE_O
+    };
+    tb::SearchConfig cfg;
+    cfg.timeBudgetMs = 1e9f;
+    cfg.depth = 1;
+    cfg.weights.plainClear = 0.0f;
+    cfg.weights.b2bBreak = -1.0e6f;
+    tb::SearchResult r = tb::search(b, tb::PIECE_I, tb::PIECE_NONE, queue,
+                                    tb::PREVIEW_LEN, /*b2b*/ 3, 0, cfg);
+    assert(r.valid);
+    const tb::PieceType placed = r.useHold ? queue[0] : tb::PIECE_I;
+    tb::Board after = b;
+    tb::lockPiece(after, placed, r.placement.rot, r.placement.x, r.placement.y);
+    assert(tb::clearLines(after) == 0);
+    std::printf("  ok  test_search_b2b_break_term\n");
 }
 
 static void test_search_wasted_t() {
@@ -2984,20 +3012,20 @@ static void test_snapshot_layout() {
 // the wrong feature through JS.
 // ---------------------------------------------------------------------------
 static void test_weight_table() {
-    assert(tb::weightNameCount() == 19);
-    static const char* expected[19] = {
+    assert(tb::weightNameCount() == 21);
+    static const char* expected[21] = {
         "holes", "coveredCells", "bumpiness", "maxHeight", "heightPenalty",
         "rowTransitions", "columnTransitions", "wellDepth", "tSlotCount",
         "tslot1", "tslot2",
-        "b2bActive", "attackDealt", "b2bCharge", "rowsWithHoles", "overhangs",
-        "plainClear", "wastedT", "incomingRisk"
+        "b2bActive", "b2bLevel", "attackDealt", "b2bCharge", "rowsWithHoles", "overhangs",
+        "plainClear", "b2bBreak", "wastedT", "incomingRisk"
     };
     for (int i = 0; i < tb::weightNameCount(); ++i) {
         assert(std::string(tb::weightName(i)) == expected[i]);
     }
     // core/eval.h's out-of-range contract is the empty string, NOT nullptr.
     assert(tb::weightName(-1)[0] == '\0');
-    assert(tb::weightName(19)[0] == '\0');
+    assert(tb::weightName(21)[0] == '\0');
 
     // The bridge and setWeightByName must agree, index for index.
     for (int i = 0; i < tb::weightNameCount(); ++i) {
@@ -3010,9 +3038,9 @@ static void test_weight_table() {
     }
     tb::Weights w = tb::defaultWeights();
     assert(tb::bindingsWeightSlot(w, -1) == nullptr);
-    assert(tb::bindingsWeightSlot(w, 19) == nullptr);
+    assert(tb::bindingsWeightSlot(w, 21) == nullptr);
     assert(tb::bindingsWeightSlot(w, 0) == &w.holes);        // spot-check the two ends
-    assert(tb::bindingsWeightSlot(w, 12) == &w.attackDealt);
+    assert(tb::bindingsWeightSlot(w, 13) == &w.attackDealt);
 }
 
 // ---------------------------------------------------------------------------
@@ -3446,6 +3474,7 @@ int main() {
     RUN(test_search_uses_full_depth);
     RUN(test_search_prefers_hold_when_better);
     RUN(test_search_plain_clear_penalty);
+    RUN(test_search_b2b_break_term);
     RUN(test_search_wasted_t);
     RUN(test_search_incoming_cancel);
     RUN(test_search_node_budget);

@@ -111,11 +111,13 @@ Weights defaultWeights() {
     w.tslot1            = W_TSLOT_1;
     w.tslot2            = W_TSLOT_2;
     w.b2bActive         = W_B2B_ACTIVE;
+    w.b2bLevel          = W_B2B_LEVEL;
     w.attackDealt       = W_ATTACK_DEALT;
     w.b2bCharge         = W_B2B_CHARGE;
     w.rowsWithHoles     = W_ROWS_WITH_HOLES;
     w.overhangs         = W_OVERHANGS;
     w.plainClear        = W_PLAIN_CLEAR;
+    w.b2bBreak          = W_B2B_BREAK;
     w.wastedT           = W_WASTED_T;
     w.incomingRisk      = W_INCOMING_RISK;
     return w;
@@ -156,6 +158,7 @@ float evaluate(const Board& b, const Weights& w, int b2bCount, int pendingRise,
          + w.rowsWithHoles     * static_cast<float>(f.rowsWithHoles)
          + w.overhangs         * static_cast<float>(f.overhangs)
          + w.b2bActive         * (b2bCount > 0 ? 1.0f : 0.0f)
+         + w.b2bLevel          * static_cast<float>(b2bCount < 8 ? b2bCount : 8)
          + w.b2bCharge         * static_cast<float>(surgeCharge(b2bCount));
     // attackDealt, plainClear and wastedT are per-move rewards applied by the search with
     // the gamma discount (PRD 4.5), not properties of the terminal board.
@@ -249,11 +252,13 @@ const WeightEntry kWeightTable[] = {
     { "tslot1",            &Weights::tslot1 },
     { "tslot2",            &Weights::tslot2 },
     { "b2bActive",         &Weights::b2bActive },
+    { "b2bLevel",          &Weights::b2bLevel },
     { "attackDealt",       &Weights::attackDealt },
     { "b2bCharge",         &Weights::b2bCharge },
     { "rowsWithHoles",     &Weights::rowsWithHoles },
     { "overhangs",         &Weights::overhangs },
     { "plainClear",        &Weights::plainClear },
+    { "b2bBreak",          &Weights::b2bBreak },
     { "wastedT",           &Weights::wastedT },
     { "incomingRisk",      &Weights::incomingRisk },
 };

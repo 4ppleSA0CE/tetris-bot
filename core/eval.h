@@ -37,12 +37,14 @@ struct Weights {
     float tslot1;             // per virtual cutout clearing 1 line
     float tslot2;             // per virtual cutout clearing 2 lines (a ready TSD)
     float b2bActive;
+    float b2bLevel;           // per b2b level held, min(b2bCount, 8): pays for GROWING 1->4
     float attackDealt;
     float b2bCharge;          // per line of Surge the live chain holds (surgeCharge)
     float rowsWithHoles;
     float overhangs;          // positive: a side-reachable hole is cheaper than an enclosed one
     // Move terms, applied per placement by the search like attackDealt, never by evaluate().
     float plainClear;         // per clear that is not b2bMaintaining (breaks or wastes the chain)
+    float b2bBreak;           // ON TOP of plainClear when the broken chain was live (b2b > 0)
     float wastedT;            // per T placed without a spin
     float incomingRisk;       // times the EXTRA cliff area pending garbage adds (see evaluate)
 };
