@@ -72,6 +72,7 @@ inline uint64_t stateHash(const Node& n) {
     mix((uint64_t)(uint8_t)n.queueIdx);
     mix(n.b2bCount);
     mix(n.combo);
+    mix(n.remaining);
     return h;
 }
 
