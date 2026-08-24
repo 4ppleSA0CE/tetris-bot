@@ -2340,6 +2340,10 @@ static void test_search_node_budget() {
     cfg.nodeBudget = 0;
     tb::SearchResult u = tb::search(b, tb::PIECE_T, tb::PIECE_O, queue, tb::PREVIEW_LEN, 0, 0, cfg);
     assert(u.nodes > a.nodes);
+    // The transposition fold must actually fold: this exact search scored 25,354 children
+    // before it (52% of surviving beam slots were duplicates). If this fires, the fold
+    // stopped skipping dominated twins.
+    assert(u.nodes < 22000);
     // a budget below the root sweep still returns the complete root level
     cfg.nodeBudget = 1;
     tb::SearchResult r = tb::search(b, tb::PIECE_T, tb::PIECE_O, queue, tb::PREVIEW_LEN, 0, 0, cfg);

@@ -144,7 +144,39 @@ SearchResult search(const Board& b, PieceType current, PieceType hold,
         levelBest = 0.0f;
         levelRoot = -1;
 
+        // TRANSPOSITION FOLD. Half the surviving beam is duplicate states (measured 52% of
+        // slots at 8x3000 under 4/16) reached along different paths. A duplicate with lower
+        // pathReward is strictly dominated - identical future, less banked reward - so
+        // expanding it only recomputes its better twin's subtree. Skip it; ties keep the
+        // first, so the fold is deterministic.
+        bool skip[MAX_BEAM];
+        if (d > 0 && curCount > 1) {
+            constexpr int TSIZE = 512;                    // 2x MAX_BEAM, power of two
+            int16_t  table[TSIZE];
+            uint64_t hashes[MAX_BEAM];
+            for (int t = 0; t < TSIZE; ++t) table[t] = -1;
+            for (int p2 = 0; p2 < curCount; ++p2) {
+                skip[p2] = false;
+                const uint64_t h = stateHash(cur[p2]);
+                hashes[p2] = h;
+                int slot = (int)(h & (uint64_t)(TSIZE - 1));
+                for (;;) {
+                    const int16_t o = table[slot];
+                    if (o < 0) { table[slot] = (int16_t)p2; break; }
+                    if (hashes[o] == h) {
+                        if (cur[p2].score > cur[o].score) { skip[o] = true; table[slot] = (int16_t)p2; }
+                        else                              { skip[p2] = true; }
+                        break;
+                    }
+                    slot = (slot + 1) & (TSIZE - 1);
+                }
+            }
+        } else {
+            for (int p2 = 0; p2 < curCount; ++p2) skip[p2] = false;
+        }
+
         for (int i = 0; i < curCount && !outOfTime; ++i) {
+            if (skip[i]) continue;
             const Node& parent = cur[i];
 
             for (int branch = 0; branch < 2 && !outOfTime; ++branch) {

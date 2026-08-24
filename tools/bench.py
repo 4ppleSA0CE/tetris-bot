@@ -7,11 +7,11 @@
 import argparse, json, statistics, subprocess, sys
 from concurrent.futures import ThreadPoolExecutor
 
-BIN = './build/tetris_bot'
+BIN = './build/tetris_bot'   # overridable with --bin for cross-binary A/B
 
 
-def run(weights, seed, pieces, garbage, nodes=0):
-    cmd = [BIN, '--json', '--seed', str(seed), '--pieces', str(pieces)]
+def run(weights, seed, pieces, garbage, nodes=0, bin_=None):
+    cmd = [bin_ or BIN, '--json', '--seed', str(seed), '--pieces', str(pieces)]
     if nodes:
         cmd += ['--nodes', str(nodes)]
     if weights:
@@ -41,6 +41,8 @@ def main():
     ap.add_argument('--garbage', default='')
     ap.add_argument('--workers', type=int, default=1, help='>1 shares cores; the anytime clock gets noisier')
     ap.add_argument('--nodes', type=int, default=0, help='deterministic node budget instead of the clock')
+    ap.add_argument('--bin', default=BIN, help='candidate binary')
+    ap.add_argument('--bin-base', default=None, help='baseline binary (default: same as --bin)')
     a = ap.parse_args()
 
     seeds = list(range(a.seed0, a.seed0 + a.seeds))
@@ -49,7 +51,8 @@ def main():
         jobs += [('base', s) for s in seeds]
     with ThreadPoolExecutor(max_workers=a.workers) as ex:
         res = dict(zip(jobs, ex.map(
-            lambda j: run(a.weights if j[0] == 'cand' else a.baseline, j[1], a.pieces, a.garbage, a.nodes), jobs)))
+            lambda j: run(a.weights if j[0] == 'cand' else a.baseline, j[1], a.pieces, a.garbage,
+                          a.nodes, a.bin if j[0] == 'cand' else (a.bin_base or a.bin)), jobs)))
 
     print(f"{'seed':>6} {'app':>7} {'topout':>6} {'spin%':>6} {'b2b':>4} {'height':>6} {'p99':>5} {'nodes':>6}"
           + ('   |  base app  diff' if a.baseline is not None else ''))
