@@ -46,9 +46,13 @@ def main():
     a = ap.parse_args()
 
     seeds = list(range(a.seed0, a.seed0 + a.seeds))
-    jobs = [('cand', s) for s in seeds]
-    if a.baseline is not None:
-        jobs += [('base', s) for s in seeds]
+    # Interleave candidate and baseline per seed: ambient load drift (thermal, background
+    # tasks) then lands on both sides, not on whichever block ran second.
+    jobs = []
+    for s in seeds:
+        jobs.append(('cand', s))
+        if a.baseline is not None:
+            jobs.append(('base', s))
     with ThreadPoolExecutor(max_workers=a.workers) as ex:
         res = dict(zip(jobs, ex.map(
             lambda j: run(a.weights if j[0] == 'cand' else a.baseline, j[1], a.pieces, a.garbage,
