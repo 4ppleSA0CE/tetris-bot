@@ -32,7 +32,7 @@ def main():
     ap.add_argument('--pairs', type=int, default=50)
     ap.add_argument('--seed0', type=int, default=40000)
     ap.add_argument('--pieces', type=int, default=2000)
-    ap.add_argument('--nodes', type=int, default=5200)
+    ap.add_argument('--nodes', type=int, default=6400)
     ap.add_argument('--nodes-b', type=int, default=0,
                     help='opponent node budget (candidate keeps --nodes): asymmetric depth duel')
     ap.add_argument('--workers', type=int, default=10)

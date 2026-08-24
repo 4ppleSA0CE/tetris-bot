@@ -191,13 +191,13 @@ The search folds dominated transpositions out of the beam (half of all beam slot
 Weights are tuned by `tools/tune.py`, a noisy cross-entropy loop: every candidate in a generation plays the same seeds (so candidates are compared, not seeds), once solo and once under `--garbage 4/16`; fitness is fewer top-outs first, then more attack; the elite refits the mean and variance. With `--duel PAIRS` the fitness is versus wins instead: each candidate plays the incumbent mean in paired-orientation games (net attack margin breaks ties), which is what shipped the plan-8 vector after solo-attack fitness proved a bad proxy in both directions. `tools/bench.py` is the gate: the same seeds for a candidate and a baseline, attack per piece with a 95% interval, paired difference, top-outs.
 
 ```bash
-python3 tools/tune.py --gens 30 --pop 50 --elite 6 --pieces 1500 --workers 10 --nodes 5200
-python3 tools/tune.py --duel 5 --gens 20 --pop 40 --elite 6 --pieces 400 --workers 10 --nodes 5200
+python3 tools/tune.py --gens 30 --pop 50 --elite 6 --pieces 1500 --workers 10 --nodes 6400
+python3 tools/tune.py --duel 5 --gens 20 --pop 40 --elite 6 --pieces 400 --workers 10 --nodes 6400
 python3 tools/bench.py --weights "wastedT=-120" --baseline "" --seeds 8 --pieces 3000
 python3 tools/bench.py --baseline "" --garbage 4/16      # survival under pressure
 ```
 
-Tune with `--nodes` (calibrated to the shipped budget) so common random numbers actually work and every core is usable; gate with `bench.py` on the wall clock, one process at a time, because the clock is what ships. `bench.py` interleaves candidate and baseline per seed so ambient load drift lands on both, and takes `--bin` / `--bin-base` for cross-binary A/B. `tools/duel.py` plays paired head-to-head matches (roles and seeds mirrored, so seat and seed luck cancel) and reports win rate, Elo and LOS — the versus record is the real metric and the mandatory ship gate; solo attack per piece is only a screening proxy, and the plan-8 duel-tuned vector beats the solo-tuned one 56-24 (LOS 1.000) while scoring far lower on the solo bench.
+Tune with `--nodes` (calibrated to the shipped budget; 6400 since the plan-9 throughput round — pathless interior movegen, surface-seeded BFS and insertion dedup lifted the 4.5 ms clock from ~5200 to ~6500 scored children) so common random numbers actually work and every core is usable; gate with `bench.py` on the wall clock, one process at a time, because the clock is what ships. `bench.py` interleaves candidate and baseline per seed so ambient load drift lands on both, and takes `--bin` / `--bin-base` for cross-binary A/B. `tools/duel.py` plays paired head-to-head matches (roles and seeds mirrored, so seat and seed luck cancel) — `--nodes-b` gives the opponent a different node budget, which is how a throughput change is priced in Elo and reports win rate, Elo and LOS — the versus record is the real metric and the mandatory ship gate; solo attack per piece is only a screening proxy, and the plan-8 duel-tuned vector beats the solo-tuned one 56-24 (LOS 1.000) while scoring far lower on the solo bench.
 
 Things worth knowing before you touch anything:
 
