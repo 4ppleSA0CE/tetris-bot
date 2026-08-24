@@ -2629,6 +2629,56 @@ static void test_all_spin_immobile() {
            == classifyTSpin(tb_, ROT_0, 3, 1, true, 0));
 }
 
+// TETR.IO all-mini+: "immobile" means the piece cannot move left, right, UP or down.
+// Sit any piece in a rectangular cavity exactly its bounding box wide and tall, sky
+// open: walled left and right, on the floor, but free to rise - NOT immobile. One
+// filled cell over any of its top cells pins it. (howtotetris diagram 16-2: the J-spin
+// single that "is not given back-to-backs in TETR.IO".)
+static void test_immobile_requires_an_overhang() {
+    using namespace tb;
+    for (int pi = 0; pi < NUM_PIECES; ++pi) {
+        const PieceType p = static_cast<PieceType>(pi);
+        const Cell* cs = pieceCells(p, ROT_0);
+        int x0 = 9, x1 = 0, y0 = 9, y1 = 0;
+        for (int i = 0; i < 4; ++i) {
+            if (cs[i].dx < x0) x0 = cs[i].dx;
+            if (cs[i].dx > x1) x1 = cs[i].dx;
+            if (cs[i].dy < y0) y0 = cs[i].dy;
+            if (cs[i].dy > y1) y1 = cs[i].dy;
+        }
+        // Origin (3, -y0): the piece's lowest cells sit on the floor. Carve its box out
+        // of otherwise full rows.
+        const int ox = 3, oy = -y0;
+        Board b{};
+        for (int row = 0; row <= y1 - y0; ++row) {
+            uint16_t r = FULL_ROW;
+            for (int dx = x0; dx <= x1; ++dx) r = static_cast<uint16_t>(r & ~(1u << (ox + dx)));
+            b.rows[row] = r;
+        }
+        assert(!collides(b, p, ROT_0, ox, oy));
+        assert(collides(b, p, ROT_0, ox - 1, oy) && collides(b, p, ROT_0, ox + 1, oy));
+        assert(collides(b, p, ROT_0, ox, oy - 1));
+        assert(!isImmobile(b, p, ROT_0, ox, oy));          // free to rise
+
+        b.rows[y1 - y0 + 1] = static_cast<uint16_t>(1u << (ox + x0));   // any top cell will do
+        for (int i = 0; i < 4; ++i) {
+            if (cs[i].dy == y1) { b.rows[y1 - y0 + 1] = static_cast<uint16_t>(1u << (ox + cs[i].dx)); break; }
+        }
+        assert(isImmobile(b, p, ROT_0, ox, oy));           // pinned
+    }
+
+    // The canonical S-spin notch has open sky and still pins the piece: rising one row
+    // drives its top cells into the stack beside the notch. This is why the basic
+    // S/Z-spin setup on the TETR.IO wiki needs no overhang.
+    const char* notch[] = {
+        "##..######",   // y = 1
+        "#..#######",   // y = 0
+    };
+    const Board nb = boardFromAscii(notch, 2);
+    assert(!collides(nb, PIECE_S, ROT_0, 1, -1));   // S ROT_0 occupies dy 1..2
+    assert(isImmobile(nb, PIECE_S, ROT_0, 1, -1));
+}
+
 // ---------------------------------------------------------------------------
 // A STARVED SEARCH MUST STILL PICK A PROPERLY EVALUATED MOVE. The root level is
 // never interrupted by the clock, so a search whose budget is already blown still
@@ -2773,6 +2823,7 @@ int main() {
     RUN(test_weight_table);
     RUN(test_bot_instance_path_replay);
     RUN(test_all_spin_immobile);
+    RUN(test_immobile_requires_an_overhang);
     RUN(test_starved_search_still_sweeps_the_root);
     RUN(test_uniform_pacing);
     RUN(test_game_bot_instance_parity);

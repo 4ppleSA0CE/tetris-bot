@@ -22,14 +22,17 @@ bool mgCellOccupied(const Board& b, int x, int y) {
     return ((b.rows[y] >> x) & 1u) != 0u;
 }
 
-// A piece with nowhere left to go: it cannot step left, right, or down from where
-// it came to rest. This is the "immobile" rule that all-spin uses for J/L/S/Z, and
-// it is intentionally shape-agnostic - there is no per-piece corner table for the
-// non-T pieces the way there is for T.
+// A piece with nowhere left to go: it cannot step left, right, up or down from where
+// it came to rest. This is TETR.IO's all-mini+ "immobile" rule, and it is intentionally
+// shape-agnostic - there is no per-piece corner table for the non-T pieces the way
+// there is for T. The UP check is the one that does the work: a piece at rest in a
+// slot is already pinned left, right and down whenever a line is about to clear, so
+// without an overhang every snug landing would read as a spin.
 bool isImmobile(const Board& b, PieceType p, Rot r, int x, int y) {
     return collides(b, p, r, x - 1, y)
         && collides(b, p, r, x + 1, y)
-        && collides(b, p, r, x, y - 1);   // y increases upward, so y-1 is down
+        && collides(b, p, r, x, y + 1)    // y increases upward, so y+1 is up
+        && collides(b, p, r, x, y - 1);
 }
 
 SpinKind classifyTSpin(const Board& b, Rot r, int x, int y,

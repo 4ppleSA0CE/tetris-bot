@@ -117,7 +117,7 @@ SpinKind classifyTSpin(const Board& b, Rot r, int x, int y,
 SpinKind classifySpin(const Board& b, PieceType p, Rot r, int x, int y,
                       bool lastWasRotation, uint8_t kickIndex);
 
-// True when the piece cannot step left, right, or down from (x, y).
+// True when the piece cannot step left, right, up or down from (x, y) (all-mini+).
 bool isImmobile(const Board& b, PieceType p, Rot r, int x, int y);
 
 // Walls (x < 0, x > 9) and the floor (y < 0) count as OCCUPIED.
