@@ -383,9 +383,8 @@ static int runRandomMode(uint32_t seed, int pieces, bool doPrint, bool doStats) 
     for (int i = 0; i < tb::PREVIEW_LEN + 1; ++i) queue[i] = bag.next();
 
     tb::PieceType hold = tb::PIECE_NONE;
-    bool b2bActive = false;
+    int b2bCount = 0;
     int combo = 0;
-    uint32_t b2bRun = 0;
     Stats st;
 
     for (int n = 0; n < pieces; ++n) {
@@ -426,9 +425,8 @@ static int runRandomMode(uint32_t seed, int pieces, bool doPrint, bool doStats) 
             ++st.topouts;
             board = tb::Board{};
             hold = tb::PIECE_NONE;
-            b2bActive = false;
+            b2bCount = 0;
             combo = 0;
-            b2bRun = 0;
             if (doPrint) {
                 std::printf("topout\n");
                 printBoard(board, static_cast<unsigned>(n + 1));
@@ -444,24 +442,17 @@ static int runRandomMode(uint32_t seed, int pieces, bool doPrint, bool doStats) 
         info.spin = tb::SPIN_NONE;   // random play never classifies a spin
         info.perfectClear = (cleared > 0) && tb::isEmpty(board);
 
-        st.attack += static_cast<uint32_t>(tb::computeAttack(info, /*b2bActive=*/b2bActive,
-                                                             /*comboCount=*/combo));
+        st.attack += static_cast<uint32_t>(tb::computeAttack(info, b2bCount, combo));
         st.lines += static_cast<uint32_t>(cleared);
         if (info.spin != tb::SPIN_NONE && cleared > 0) ++st.tspins;
 
         if (cleared > 0) {
-            if (tb::b2bMaintaining(info)) {
-                if (b2bActive) ++b2bRun;
-                b2bActive = true;
-            } else {
-                b2bActive = false;
-                b2bRun = 0;
-            }
+            b2bCount = tb::b2bMaintaining(info) ? b2bCount + 1 : 0;
             ++combo;
         } else {
             combo = 0;
         }
-        if (b2bRun > st.maxB2b) st.maxB2b = b2bRun;
+        if (b2bCount > 1 && static_cast<uint32_t>(b2bCount - 1) > st.maxB2b) st.maxB2b = b2bCount - 1;
         ++st.pieces;
 
         if (doPrint) printBoard(board, static_cast<unsigned>(n + 1));

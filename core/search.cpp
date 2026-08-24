@@ -17,7 +17,7 @@ struct Node {
     Board     board;
     PieceType hold;
     int8_t    queueIdx;      // index of the next unplaced piece in seq[]
-    bool      b2b;
+    uint8_t   b2bCount;
     uint8_t   combo;
     float     attackScore;   // sum of discounted attack rewards along the path
     float     score;         // attackScore + evaluate(terminal board)
@@ -65,7 +65,7 @@ inline bool aboveField(const Board& b) {
 
 SearchResult search(const Board& b, PieceType current, PieceType hold,
                     const PieceType* queue, int queueLen,
-                    bool b2bActive, int comboCount, const SearchConfig& cfg)
+                    int b2bCount, int comboCount, const SearchConfig& cfg)
 {
     const auto t0 = std::chrono::steady_clock::now();
     const double budgetMs = (double)cfg.timeBudgetMs;
@@ -96,7 +96,7 @@ SearchResult search(const Board& b, PieceType current, PieceType hold,
     cur[0].board       = b;
     cur[0].hold        = hold;
     cur[0].queueIdx    = 0;
-    cur[0].b2b         = b2bActive;
+    cur[0].b2bCount    = (uint8_t)(b2bCount < 0 ? 0 : (b2bCount > 255 ? 255 : b2bCount));
     cur[0].combo       = (uint8_t)(comboCount < 0 ? 0 : (comboCount > 255 ? 255 : comboCount));
     cur[0].attackScore = 0.0f;
     cur[0].score       = 0.0f;
@@ -165,18 +165,20 @@ SearchResult search(const Board& b, PieceType current, PieceType hold,
                     ci.lines        = (uint8_t)lines;
                     ci.spin         = pl.spin;
                     ci.perfectClear = (lines > 0) && isEmpty(child.board);
-                    const int atk = computeAttack(ci, /*b2bActive=*/parent.b2b,
-                                                      /*comboCount=*/parent.combo);
+                    const int atk = computeAttack(ci, parent.b2bCount, parent.combo);
 
                     child.hold        = newHold;
                     child.queueIdx    = (int8_t)newQueueIdx;
-                    child.b2b         = (lines > 0) ? b2bMaintaining(ci) : parent.b2b;
+                    child.b2bCount    = (lines == 0) ? parent.b2bCount
+                                      : b2bMaintaining(ci)
+                                          ? (uint8_t)(parent.b2bCount < 255 ? parent.b2bCount + 1 : 255)
+                                          : (uint8_t)0;
                     child.combo       = (lines > 0)
                                           ? (uint8_t)(parent.combo < 255 ? parent.combo + 1 : 255)
                                           : (uint8_t)0;
                     child.attackScore = parent.attackScore
                                       + cfg.weights.attackDealt * (float)atk * discount;
-                    float terminal = evaluate(child.board, cfg.weights, child.b2b);
+                    float terminal = evaluate(child.board, cfg.weights, child.b2bCount > 0);
                     if (aboveField(child.board)) terminal += TOPOUT_PENALTY;
                     child.score = child.attackScore + terminal;
 

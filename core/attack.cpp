@@ -25,11 +25,16 @@ bool b2bMaintaining(const ClearInfo& c) {
     return c.lines >= 4 || c.spin != SPIN_NONE || c.perfectClear;
 }
 
-int computeAttack(const ClearInfo& c, bool b2bActive, int comboCount) {
+int surgeCharge(int b2bCount) {
+    return b2bCount > 4 ? b2bCount - 1 : 0;
+}
+
+int computeAttack(const ClearInfo& c, int b2bCount, int comboCount) {
     if (c.lines == 0) return 0;
 
+    const bool held = b2bMaintaining(c);
     double g = baseAttack(c);
-    if (b2bActive && b2bMaintaining(c)) g += 1.0;
+    if (b2bCount > 0 && held) g += 1.0;
 
     const int combo = comboCount < 0 ? 0 : comboCount;
     g *= 1.0 + 0.25 * combo;
@@ -37,6 +42,7 @@ int computeAttack(const ClearInfo& c, bool b2bActive, int comboCount) {
 
     int attack = static_cast<int>(std::floor(g));
     if (c.perfectClear) attack += 5;
+    if (!held) attack += surgeCharge(b2bCount);
     return attack;
 }
 

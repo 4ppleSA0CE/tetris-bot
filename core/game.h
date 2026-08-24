@@ -35,6 +35,7 @@ public:
     uint32_t     piecesPlaced() const { return piecesPlaced_; }
     uint32_t     linesCleared() const { return linesCleared_; }
     uint32_t     attackSent()   const { return attackSent_; }
+    uint32_t     surgeSent()    const { return surgeSent_; }
     uint16_t     b2bCount()     const { return b2bCount_; }
     uint16_t     comboCount()   const { return comboCount_; }
 
@@ -65,11 +66,11 @@ private:
     PieceType    queue_[PREVIEW_LEN];
     Placement    lastPlacement_;
     bool         lastUsedHold_;
-    bool         b2bActive_;
     bool         toppedOut_;
     uint32_t     piecesPlaced_;
     uint32_t     linesCleared_;
     uint32_t     attackSent_;
+    uint32_t     surgeSent_;
     uint32_t     tSpinCount_;
     uint16_t     b2bCount_;
     uint16_t     comboCount_;

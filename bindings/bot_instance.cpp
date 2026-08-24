@@ -76,7 +76,6 @@ void BotInstance::reset(uint32_t seed) {
     hold_    = PIECE_NONE;
     current_ = bag_.next();
     for (int i = 0; i < PREVIEW_LEN; ++i) queue_[i] = bag_.next();
-    b2bActive_ = false;
     comboCount_ = 0;
     b2bCount_ = 0;
     piecesPlaced_ = 0;
@@ -173,7 +172,7 @@ void BotInstance::plan() {
     if (collides(board_, current_, ROT_0, SPAWN_X, SPAWN_Y)) { topOut(); return; }
 
     const SearchResult r = search(board_, current_, hold_, queue_, PREVIEW_LEN,
-                                  b2bActive_, comboCount_, cfg_);
+                                  b2bCount_, comboCount_, cfg_);
     if (!r.valid) { topOut(); return; }
 
     if (r.useHold) {
@@ -242,8 +241,7 @@ void BotInstance::lockCurrent() {
     ci.spin         = plan_.spin;
     ci.perfectClear = (lines > 0) && isEmpty(board_);
 
-    const bool wasB2B = b2bActive_;
-    attackSent_   += static_cast<uint32_t>(computeAttack(ci, wasB2B, comboCount_));
+    attackSent_   += static_cast<uint32_t>(computeAttack(ci, b2bCount_, comboCount_));
     linesCleared_ += static_cast<uint32_t>(lines);
     piecesPlaced_ += 1;
 
@@ -273,17 +271,16 @@ void BotInstance::lockCurrent() {
         }
 
         if (b2bMaintaining(ci)) {
-            if (wasB2B) {
-                if (b2bCount_ < 0xFFFF) b2bCount_ = static_cast<uint16_t>(b2bCount_ + 1);
+            if (b2bCount_ < 0xFFFF) ++b2bCount_;
+            if (b2bCount_ > 1) {
                 pushEvent(EV_B2B_EXTEND,
                           static_cast<uint8_t>(b2bCount_ > 255 ? 255 : b2bCount_));
-            } else {
-                b2bCount_ = 1;
             }
-            b2bActive_ = true;
         } else {
-            if (wasB2B) pushEvent(EV_B2B_BREAK, 0);
-            b2bActive_ = false;
+            const int surge = surgeCharge(b2bCount_);
+            if (b2bCount_ > 0) {
+                pushEvent(EV_B2B_BREAK, static_cast<uint8_t>(surge > 255 ? 255 : surge));
+            }
             b2bCount_ = 0;
         }
         if (ci.perfectClear) pushEvent(EV_PERFECT_CLEAR, 0);

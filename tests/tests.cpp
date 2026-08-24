@@ -919,6 +919,24 @@ static void test_attack_all_clear_adds_five_and_holds_b2b() {
     assert(!tb::b2bMaintaining(ci(2, tb::SPIN_NONE, false)));
 }
 
+// TETR.IO B2B Charging: from an internal count of 5 (displayed "B2B x4") a chain holds a
+// Surge of count-1 lines, released in full by the clear that breaks it, never combo-scaled.
+static void test_surge_charge_by_chain_length() {
+    for (int c = 0; c <= 4; ++c) assert(tb::surgeCharge(c) == 0);
+    assert(tb::surgeCharge(5) == 4);
+    assert(tb::surgeCharge(9) == 8);
+    assert(tb::surgeCharge(31) == 30);
+}
+
+static void test_attack_surge_is_sent_on_break() {
+    assert(tb::computeAttack(ci(1, tb::SPIN_NONE, false), 5, 0) == 4);
+    assert(tb::computeAttack(ci(1, tb::SPIN_NONE, false), 4, 0) == 0);
+    assert(tb::computeAttack(ci(2, tb::SPIN_NONE, false), 9, 3) == 1 + 8);      // 1.75 -> 1, plus 8
+    assert(tb::computeAttack(ci(4, tb::SPIN_NONE, false), 9, 0) == 4 + 1);      // held, not broken
+    assert(tb::computeAttack(ci(1, tb::SPIN_MINI, false), 9, 0) == 0 + 1);
+    assert(tb::computeAttack(ci(0, tb::SPIN_NONE, false), 9, 0) == 0);
+}
+
 static void test_attack_is_zero_when_no_lines_clear() {
     assert(tb::computeAttack(ci(0, tb::SPIN_NONE, false), true, 8) == 0);
     assert(tb::computeAttack(ci(0, tb::SPIN_MINI, false), true, 8) == 0);
@@ -2258,6 +2276,33 @@ static void test_game_steps() {
     assert(tb::isEmpty(g.board()));
 }
 
+// Every GEV_B2B_BREAK carries the Surge it released, Game::surgeSent() is their sum, and a
+// deterministic 1000-piece run on seed 42 releases at least one.
+static void test_game_surge_accounting() {
+    tb::SearchConfig cfg;
+    cfg.timeBudgetMs = 1e9f;
+    tb::Game g(42u, cfg);
+
+    uint32_t breaks = 0, surges = 0, sum = 0;
+    uint16_t prevB2b = 0;
+    for (int i = 0; i < 1000 && !g.toppedOut(); ++i) {
+        g.stepPiece();
+        for (int e = 0; e < g.eventCount(); ++e) {
+            if (g.eventAt(e).type != tb::GEV_B2B_BREAK) continue;
+            ++breaks;
+            const unsigned p = g.eventAt(e).param;
+            assert(p == (unsigned)tb::surgeCharge(prevB2b));
+            sum += p;
+            if (p > 0) ++surges;
+        }
+        assert(g.surgeSent() == sum);
+        prevB2b = g.b2bCount();
+    }
+    std::printf("      surge: %u breaks, %u surges, %u lines\n", breaks, surges, sum);
+    assert(breaks > 0);
+    assert(surges > 0);
+}
+
 // Required by the plan's obligation 1 (three-way back-to-back). b2bMaintaining() returns false
 // both for "cleared nothing" and for "cleared, but broke the chain" -- it cannot tell them apart,
 // so Game must:
@@ -2784,6 +2829,8 @@ int main() {
     RUN(test_attack_combo_log_floor_for_zero_base);
     RUN(test_attack_combo_multiplier_is_unbounded);
     RUN(test_attack_all_clear_adds_five_and_holds_b2b);
+    RUN(test_surge_charge_by_chain_length);
+    RUN(test_attack_surge_is_sent_on_break);
     RUN(test_attack_is_zero_when_no_lines_clear);
     RUN(test_mg_t_center_is_origin_plus_one_one);
     RUN(test_mg_cell_offsets_fit_zero_to_three);
@@ -2832,6 +2879,7 @@ int main() {
     RUN(test_search_time_budget);
     RUN(test_game_steps);
     RUN(test_game_b2b_survives_non_clearing_pieces);
+    RUN(test_game_surge_accounting);
     RUN(test_game_determinism);
     RUN(test_thousand_piece_run);
     RUN(test_snapshot_layout);

@@ -18,11 +18,11 @@ void Game::reset(uint32_t seed) {
     for (int i = 0; i < PREVIEW_LEN; ++i) queue_[i] = bag_.next();
     lastPlacement_ = Placement{};
     lastUsedHold_  = false;
-    b2bActive_     = false;
     toppedOut_     = false;
     piecesPlaced_  = 0;
     linesCleared_  = 0;
     attackSent_    = 0;
+    surgeSent_     = 0;
     tSpinCount_    = 0;
     b2bCount_      = 0;
     comboCount_    = 0;
@@ -49,7 +49,7 @@ void Game::stepPiece() {
 
     const auto t0 = std::chrono::steady_clock::now();
     const SearchResult r = search(board_, current_, hold_, queue_, PREVIEW_LEN,
-                                  b2bActive_, (int)comboCount_, cfg_);
+                                  (int)b2bCount_, (int)comboCount_, cfg_);
     lastSearchMs_ = (float)std::chrono::duration<double, std::milli>(
                         std::chrono::steady_clock::now() - t0).count();
 
@@ -88,7 +88,7 @@ void Game::stepPiece() {
     ci.lines        = (uint8_t)lines;
     ci.spin         = r.placement.spin;
     ci.perfectClear = (lines > 0) && isEmpty(board_);
-    const int atk = computeAttack(ci, /*b2bActive=*/b2bActive_, /*comboCount=*/(int)comboCount_);
+    const int atk = computeAttack(ci, (int)b2bCount_, (int)comboCount_);
 
     ++piecesPlaced_;
     linesCleared_ += (uint32_t)lines;
@@ -113,14 +113,14 @@ void Game::stepPiece() {
         comboCount_ = (uint16_t)(comboCount_ + 1);
 
         if (b2bMaintaining(ci)) {
-            b2bCount_  = b2bActive_ ? (uint16_t)(b2bCount_ + 1) : (uint16_t)1;
-            b2bActive_ = true;
+            if (b2bCount_ < 0xFFFF) ++b2bCount_;
             if (b2bCount_ > maxB2b_) maxB2b_ = b2bCount_;
             pushEvent(GEV_B2B_EXTEND, (uint8_t)(b2bCount_ > 255 ? 255 : b2bCount_));
         } else {
-            if (b2bActive_) pushEvent(GEV_B2B_BREAK, 0);
-            b2bActive_ = false;
-            b2bCount_  = 0;
+            const int surge = surgeCharge((int)b2bCount_);
+            surgeSent_ += (uint32_t)surge;
+            if (b2bCount_ > 0) pushEvent(GEV_B2B_BREAK, (uint8_t)(surge > 255 ? 255 : surge));
+            b2bCount_ = 0;
         }
 
         if (ci.perfectClear) pushEvent(GEV_PERFECT_CLEAR, 0);

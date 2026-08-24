@@ -73,7 +73,6 @@ private:
     PieceType hold_    = PIECE_NONE;
     PieceType queue_[PREVIEW_LEN]{};
 
-    bool     b2bActive_   = false;
     int      comboCount_  = 0;
     uint16_t b2bCount_    = 0;
     uint32_t piecesPlaced_ = 0;
