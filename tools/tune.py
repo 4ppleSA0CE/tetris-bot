@@ -58,6 +58,8 @@ def main():
     ap.add_argument('--sigma-scale', type=float, default=0.5, help='initial sigma = max(scale*|w|, 5)')
     ap.add_argument('--noise', type=float, default=0.05, help='constant variance floor: (noise*sigma0)^2')
     ap.add_argument('--init', default='', help='start mean, name=value,... (default: compiled)')
+    ap.add_argument('--duel-cap', type=int, default=2000,
+                    help='versus game piece cap in duel-fitness mode (chain economy needs room)')
     ap.add_argument('--duel', type=int, default=0,
                     help='duel fitness: seed pairs per candidate vs the incumbent mean '
                          '(2*pairs games, both orientations); --pieces caps each game; '
@@ -77,6 +79,7 @@ def main():
     sigma = list(sigma0)
     floor = [(a.noise * s) ** 2 for s in sigma0]
     rng = random.Random(a.seed0)
+    prev_mean = None
 
     for gen in range(a.gens):
         pop = [[rng.gauss(m, s) for m, s in zip(mean, sigma)] for _ in range(a.pop)]
@@ -84,29 +87,47 @@ def main():
         if a.duel:
             pairs = [(a.seed0 + gen * 1000 + 2 * p, a.seed0 + gen * 1000 + 2 * p + 1)
                      for p in range(a.duel)]
-            inc = fmt(names, mean)
-            jobs = [(i, sa, sb, sw) for i in range(a.pop) for sa, sb in pairs for sw in (0, 1)]
+            # Opponent pool: the compiled defaults plus the previous generation's mean.
+            # Two opponents break the single-lineage self-play overfit the plan-9 retune
+            # measured (healthy training curve, lost the held-out duel).
+            pool = [''] if prev_mean is None else ['', prev_mean]
+            solo_seed = a.seed0 + gen * 1000 + 900
+            jobs = []
+            for i in range(a.pop):
+                for opp in pool:
+                    for sa, sb in pairs:
+                        for sw in (0, 1):
+                            jobs.append(('vs', i, opp, sa, sb, sw))
+                jobs.append(('solo', i, None, solo_seed, 0, 0))
 
             def job(t):
-                i, sa, sb, sw = t
+                kind, i, opp, sa, sb, sw = t
                 cand = fmt(names, pop[i])
-                wa, wb = (inc, cand) if sw else (cand, inc)
-                r = run_vs(wa, wb, sa, sb, a.pieces, a.nodes)
+                if kind == 'solo':
+                    r = run(cand, sa, a.pieces, '', a.nodes)
+                    return ('solo', r['topouts'], r['attack'])
+                wa, wb = (opp, cand) if sw else (cand, opp)
+                r = run_vs(wa, wb, sa, sb, a.duel_cap, a.nodes)
                 cand_a = not sw
                 w = r['winner']
                 s = 0.5 if w == 'draw' else (1.0 if (w == 'A') == cand_a else 0.0)
                 m = (r['attackA'] - r['attackB']) * (1 if cand_a else -1)
-                return s, m
+                return ('vs', s, m)
 
             with ThreadPoolExecutor(max_workers=a.workers) as ex:
                 res = list(ex.map(job, jobs))
-            g = 2 * a.duel
+            g = 2 * a.duel * len(pool) + 1
             fit = []
             for i in range(a.pop):
                 chunk = res[i * g:(i + 1) * g]
-                score = sum(s for s, _ in chunk)
-                margin = sum(m for _, m in chunk)
-                fit.append((-score, -margin, score, margin))
+                score = sum(x[1] for x in chunk if x[0] == 'vs')
+                margin = sum(x[2] for x in chunk if x[0] == 'vs')
+                topo = sum(x[1] for x in chunk if x[0] == 'solo')
+                atk = sum(x[2] for x in chunk if x[0] == 'solo')
+                # Lexicographic: fight parity first, then survive, then ATTACK EFFICIENCY
+                # (the round-6 goal), margin last.
+                fit.append((-score, topo, -atk, -margin, score, atk, margin))
+            prev_mean = fmt(names, mean)
             seeds = pairs
         else:
             seeds = [a.seed0 + gen * 10 + 1, a.seed0 + gen * 10 + 2]
@@ -123,7 +144,7 @@ def main():
                 solo, pres = res[2 * i], res[2 * i + 1]
                 fit.append((solo['topouts'] + pres['topouts'], -(solo['attack'] + pres['attack']),
                             solo['attack'], pres['attack']))
-        order = sorted(range(a.pop), key=lambda i: fit[i][:2])
+        order = sorted(range(a.pop), key=lambda i: fit[i][:4] if a.duel else fit[i][:2])
         elite = order[:a.elite]
         mean = [sum(pop[i][k] for i in elite) / a.elite for k in range(len(names))]
         var = [sum((pop[i][k] - mean[k]) ** 2 for i in elite) / a.elite for k in range(len(names))]
@@ -131,9 +152,10 @@ def main():
 
         best = order[0]
         if a.duel:
-            print(f"gen {gen:02d} best score {fit[best][2]:.1f}/{2 * a.duel} "
-                  f"margin {fit[best][3]:+d}  elite-avg score "
-                  f"{sum(fit[i][2] for i in elite) / a.elite:.2f}  incumbent rank {order.index(0)}")
+            games = 2 * a.duel * (1 if gen == 0 else 2)
+            print(f"gen {gen:02d} best score {fit[best][4]:.1f}/{games} "
+                  f"soloAtk {fit[best][5]}  margin {fit[best][6]:+d}  elite-avg score "
+                  f"{sum(fit[i][4] for i in elite) / a.elite:.2f}  incumbent rank {order.index(0)}")
         else:
             print(f"gen {gen:02d} seeds {seeds} best top-outs {fit[best][0]} attack "
                   f"{fit[best][2]}+{fit[best][3]}  elite-avg attack "
