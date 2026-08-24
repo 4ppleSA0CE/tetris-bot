@@ -1,3 +1,4 @@
+import { PieceLetter } from '../js/types.js';
 import { getPieceCells } from '../js/layout.js';
 // --- constants -------------------------------------------------------------
 const VISIBLE_ROWS = 20;
@@ -201,22 +202,27 @@ function drawHud(ctx, s, th, g) {
 function readAccent(el) {
     return getComputedStyle(el).getPropertyValue('--bot-accent').trim() || FALLBACK;
 }
-function calloutText(type, param) {
+function calloutText(type, param, piece) {
+    const spin = PieceLetter[piece] ?? 'T';
     switch (type) {
         case 2: return 'TETRIS';
-        case 3: return 'T-SPIN MINI';
-        case 4: return 'T-SPIN SINGLE';
-        case 5: return 'T-SPIN DOUBLE';
-        case 6: return 'T-SPIN TRIPLE';
+        case 3: return `${spin}-SPIN MINI`;
+        case 4: return `${spin}-SPIN SINGLE`;
+        case 5: return `${spin}-SPIN DOUBLE`;
+        case 6: return `${spin}-SPIN TRIPLE`;
         case 7: return `BACK-TO-BACK ×${param}`;
+        case 8: return param > 0 ? `SURGE +${param}` : null;
         case 9: return 'PERFECT CLEAR';
         case 10: return 'TOP OUT';
-        default: return null; // PIECE_LOCK, LINE_CLEAR, B2B_BREAK are not shouted about
+        default: return null; // PIECE_LOCK, LINE_CLEAR are not shouted about
     }
 }
 function collectCallouts(queue, s, t) {
+    let piece = -1;
     for (const ev of s.events) {
-        const text = calloutText(ev.type, ev.param);
+        if (ev.type === 0)
+            piece = ev.param;
+        const text = calloutText(ev.type, ev.param, piece);
         if (text === null)
             continue;
         queue.push({ text, born: t });

@@ -11,6 +11,7 @@ export interface Weights {
     tSlotCount: number;
     b2bActive: number;
     attackDealt: number;
+    b2bCharge: number;
 }
 /** Mirrors tb::EventType in bindings/snapshot.h. */
 export declare const EventType: {
@@ -32,8 +33,9 @@ export interface SnapshotEvent {
     type: number;
     /**
      * PieceType (0-6) for PIECE_LOCK, lines cleared for a clear event, chain
-     * length for B2B_EXTEND, 0 otherwise. Exactly one of LINE_CLEAR / TETRIS /
-     * TSPIN_* fires per line-clearing placement.
+     * length for B2B_EXTEND, Surge lines released for B2B_BREAK, 0 otherwise.
+     * Exactly one of LINE_CLEAR / TETRIS / TSPIN_* fires per line-clearing
+     * placement; TSPIN_* covers every piece under all-mini+.
      */
     param: number;
     /** The tick this event fired on, low 16 bits of Snapshot.frame. */
