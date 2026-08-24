@@ -452,7 +452,7 @@ static int runRandomMode(uint32_t seed, int pieces, bool doPrint, bool doStats) 
         } else {
             combo = 0;
         }
-        if (b2bCount > 1 && static_cast<uint32_t>(b2bCount - 1) > st.maxB2b) st.maxB2b = b2bCount - 1;
+        if (b2bCount > 1 && static_cast<uint32_t>(b2bCount - 1) > st.maxB2b) st.maxB2b = static_cast<uint32_t>(b2bCount - 1);
         ++st.pieces;
 
         if (doPrint) printBoard(board, static_cast<unsigned>(n + 1));
