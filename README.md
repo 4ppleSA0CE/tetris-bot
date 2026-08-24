@@ -22,7 +22,7 @@ bindings/    Snapshot struct, layout export, embind glue.
 dist/        Committed build output: bot.js (single-file WASM) + bot.d.ts.
 js/          TypeScript wrapper: createTetrisBot(), snapshot views, host behavior.
 renderers/   canvas-mono.ts — Canvas 2D, themed entirely by CSS custom properties.
-demo/        Standalone Vite page: board, stat line, callouts, PPS slider. Fresh seed per load; ?seed=42 replays the README game.
+demo/        Standalone Vite page: board, stat line, callouts, PPS slider. Fresh seed per load; ?seed=42 replays the README game. Every 12th piece brings 1-4 lines of incoming garbage (seed-deterministic, shown as a strip on the left well edge); ?garbage=0 for the quiet solo game.
 native/      CLI harness — runs the core natively, no browser.
 tests/       tests.cpp (C++, assert-based) + *.mjs (the web layer, plain node).
 ```
