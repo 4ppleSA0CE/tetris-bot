@@ -72,8 +72,15 @@ constexpr float W_COLUMN_TRANSITIONS = -8.3f;
 constexpr float W_WELL_DEPTH = 0.3f;
 
 // countTSlots() recognises TSD-shaped slots only; TST and side-entry slots score 0. The bot
-// still finds those placements, it just is not paid to keep them open.
+// still finds those placements, it just is not paid to keep them open. Since plan 11 this
+// counts the slots REMAINING after the virtual cutouts below.
 constexpr float W_T_SLOT_COUNT = 255.5f;
+
+// Virtual T-spin cutout rewards (plan 11, Cold Clear's tslot idea): a ready slot is
+// virtually executed and the board evaluated as if the spin gets taken. Hand-seeded at
+// roughly the attack a TSS/TSD is worth; the tuner owns them from here on.
+constexpr float W_TSLOT_1 = 100.0f;
+constexpr float W_TSLOT_2 = 300.0f;
 
 // Down from plan-6's 241: duels average 88 pieces, so a long-held chain rarely pays out.
 // Spend the chain, send the lines, kill first.

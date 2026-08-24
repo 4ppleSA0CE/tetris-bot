@@ -54,6 +54,49 @@ int countTSlots(const Board& b) {
     return count;
 }
 
+int cutoutTSlots(Board* b, int maxCuts, int* lines1, int* lines2) {
+    int cuts = 0;
+    if (maxCuts > 2) maxCuts = 2;   // more than two virtual Ts is fantasy, and eval cost
+    while (cuts < maxCuts) {
+        int h[BOARD_W];
+        int maxH = 0;
+        for (int c = 0; c < BOARD_W; ++c) {
+            h[c] = columnHeight(*b, c);
+            if (h[c] > maxH) maxH = h[c];
+        }
+        int bestLines = 0, bestX = -1, bestY = -1;
+        for (int cy = 1; cy <= maxH && bestLines < 2; ++cy) {
+            for (int cx = 1; cx <= BOARD_W - 2; ++cx) {
+                // Same S1-S4 slot pattern as countTSlots.
+                if (occ(*b, cx - 1, cy) || occ(*b, cx, cy) || occ(*b, cx + 1, cy)) continue;
+                if (occ(*b, cx, cy - 1)) continue;
+                const bool dl = occ(*b, cx - 1, cy - 1);
+                const bool dr = occ(*b, cx + 1, cy - 1);
+                if (!dl || !dr) continue;
+                const bool ul = occ(*b, cx - 1, cy + 1);
+                const bool ur = occ(*b, cx + 1, cy + 1);
+                if ((dl ? 1 : 0) + (dr ? 1 : 0) + (ul ? 1 : 0) + (ur ? 1 : 0) < 3) continue;
+                if (h[cx - 1] > cy && h[cx] > cy && h[cx + 1] > cy) continue;
+                // Lines the virtual TSD would clear: row cy needs everything but the
+                // T's top three cells; row cy-1 everything but the nub cell.
+                const uint16_t topNeed = (uint16_t)(FULL_ROW & ~(7u << (cx - 1)));
+                const uint16_t nubNeed = (uint16_t)(FULL_ROW & ~(1u << cx));
+                const int lines = ((b->rows[cy] & topNeed) == topNeed ? 1 : 0)
+                                + ((b->rows[cy - 1] & nubNeed) == nubNeed ? 1 : 0);
+                if (lines > bestLines) { bestLines = lines; bestX = cx; bestY = cy; }
+                if (bestLines == 2) break;   // cannot do better; earliest scan wins ties
+            }
+        }
+        if (bestLines < 1) break;   // a slot that cannot pay is stack, not a chain
+        b->rows[bestY]     |= (uint16_t)(7u << (bestX - 1));
+        b->rows[bestY - 1] |= (uint16_t)(1u << bestX);
+        clearLines(*b);
+        if (bestLines == 1) ++*lines1; else ++*lines2;
+        ++cuts;
+    }
+    return cuts;
+}
+
 Weights defaultWeights() {
     Weights w;
     w.holes             = W_HOLES;
@@ -65,6 +108,8 @@ Weights defaultWeights() {
     w.columnTransitions = W_COLUMN_TRANSITIONS;
     w.wellDepth         = W_WELL_DEPTH;
     w.tSlotCount        = W_T_SLOT_COUNT;
+    w.tslot1            = W_TSLOT_1;
+    w.tslot2            = W_TSLOT_2;
     w.b2bActive         = W_B2B_ACTIVE;
     w.attackDealt       = W_ATTACK_DEALT;
     w.b2bCharge         = W_B2B_CHARGE;
@@ -76,8 +121,19 @@ Weights defaultWeights() {
     return w;
 }
 
-float evaluate(const Board& b, const Weights& w, int b2bCount, int pendingRise) {
-    const Features f = extractFeatures(b);
+float evaluate(const Board& b, const Weights& w, int b2bCount, int pendingRise,
+               int tAvail) {
+    Features f;
+    if (tAvail > 0) {
+        Board cut = b;
+        int l1 = 0, l2 = 0;
+        cutoutTSlots(&cut, tAvail, &l1, &l2);
+        f = extractFeatures(cut);
+        f.tslotLines1 = l1;
+        f.tslotLines2 = l2;
+    } else {
+        f = extractFeatures(b);
+    }
     int er = f.maxHeight + pendingRise - HEIGHT_PENALTY_THRESHOLD;
     if (er < 0) er = 0;
     const int extra = er * er - f.heightPenalty;   // 0 when pendingRise == 0
@@ -91,6 +147,8 @@ float evaluate(const Board& b, const Weights& w, int b2bCount, int pendingRise) 
          + w.columnTransitions * static_cast<float>(f.columnTransitions)
          + w.wellDepth         * static_cast<float>(f.wellDepth)
          + w.tSlotCount        * static_cast<float>(f.tSlotCount)
+         + w.tslot1            * static_cast<float>(f.tslotLines1)
+         + w.tslot2            * static_cast<float>(f.tslotLines2)
          + w.rowsWithHoles     * static_cast<float>(f.rowsWithHoles)
          + w.overhangs         * static_cast<float>(f.overhangs)
          + w.b2bActive         * (b2bCount > 0 ? 1.0f : 0.0f)
@@ -184,6 +242,8 @@ const WeightEntry kWeightTable[] = {
     { "columnTransitions", &Weights::columnTransitions },
     { "wellDepth",         &Weights::wellDepth },
     { "tSlotCount",        &Weights::tSlotCount },
+    { "tslot1",            &Weights::tslot1 },
+    { "tslot2",            &Weights::tslot2 },
     { "b2bActive",         &Weights::b2bActive },
     { "attackDealt",       &Weights::attackDealt },
     { "b2bCharge",         &Weights::b2bCharge },

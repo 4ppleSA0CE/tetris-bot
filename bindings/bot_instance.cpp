@@ -27,14 +27,16 @@ float* bindingsWeightSlot(Weights& w, int index) {
         case 6:  return &w.columnTransitions;
         case 7:  return &w.wellDepth;
         case 8:  return &w.tSlotCount;
-        case 9:  return &w.b2bActive;
-        case 10: return &w.attackDealt;
-        case 11: return &w.b2bCharge;
-        case 12: return &w.rowsWithHoles;
-        case 13: return &w.overhangs;
-        case 14: return &w.plainClear;
-        case 15: return &w.wastedT;
-        case 16: return &w.incomingRisk;
+        case 9:  return &w.tslot1;
+        case 10: return &w.tslot2;
+        case 11: return &w.b2bActive;
+        case 12: return &w.attackDealt;
+        case 13: return &w.b2bCharge;
+        case 14: return &w.rowsWithHoles;
+        case 15: return &w.overhangs;
+        case 16: return &w.plainClear;
+        case 17: return &w.wastedT;
+        case 18: return &w.incomingRisk;
         default: return nullptr;
     }
 }

@@ -2034,6 +2034,82 @@ static void test_eval_rows_with_holes() {
     assert(tb::extractFeatures(tall).rowsWithHoles == 17);
 }
 
+static void test_eval_tslot_cutout_tsd() {
+    const char* fx[] = {
+        "..........",
+        "...#......",
+        "###...####",
+        "####.#####",
+        "######.###",
+    };
+    const tb::Board b = tb::boardFromAscii(fx, 5);
+    tb::Board c = b;
+    int l1 = 0, l2 = 0;
+    const int cuts = tb::cutoutTSlots(&c, 1, &l1, &l2);
+    assert(cuts == 1 && l1 == 0 && l2 == 1);
+    const tb::Features fr = tb::extractFeatures(b);
+    const tb::Features fc = tb::extractFeatures(c);
+    assert(fr.holes == 2);          // (6,0) under the stack, (3,2) under the slot lip
+    assert(fc.holes == 0);          // vanished with the virtual TSD
+    assert(fr.maxHeight == 4 && fc.maxHeight == 2);
+    // evaluate() applies the cutout only when told a T is available
+    const tb::Weights w = tb::defaultWeights();
+    assert(tb::evaluate(b, w, 0, 0, 1) != tb::evaluate(b, w, 0, 0, 0));
+    std::printf("  ok  test_eval_tslot_cutout_tsd\n");
+}
+
+static void test_eval_tslot_cutout_needs_t() {
+    const char* fx[] = {
+        "..........",
+        "...#......",
+        "###...####",
+        "####.#####",
+        "######.###",
+    };
+    const tb::Board b = tb::boardFromAscii(fx, 5);
+    tb::Board c = b;
+    int l1 = 0, l2 = 0;
+    const int cuts = tb::cutoutTSlots(&c, 0, &l1, &l2);
+    assert(cuts == 0 && l1 == 0 && l2 == 0);
+    for (int y = 0; y < tb::BOARD_H; ++y) assert(c.rows[y] == b.rows[y]);
+    std::printf("  ok  test_eval_tslot_cutout_needs_t\n");
+}
+
+static void test_eval_tslot_cutout_iterates() {
+    const char* fx[] = {
+        "..........",
+        "...#......",
+        "###...####",
+        "####.#####",
+        "###...####",
+        "####.#####",
+        "#########.",
+    };
+    const tb::Board b = tb::boardFromAscii(fx, 7);
+    tb::Board c = b;
+    int l1 = 0, l2 = 0;
+    const int cuts = tb::cutoutTSlots(&c, 2, &l1, &l2);
+    assert(cuts == 2 && l1 == 0 && l2 == 2);
+    std::printf("  ok  test_eval_tslot_cutout_iterates\n");
+}
+
+static void test_eval_tslot_no_cutout_without_clear() {
+    const char* fx[] = {
+        "..........",
+        "...#......",
+        "###....###",
+        "####.####.",
+        "######.###",
+    };
+    const tb::Board b = tb::boardFromAscii(fx, 5);
+    tb::Board c = b;
+    int l1 = 0, l2 = 0;
+    const int cuts = tb::cutoutTSlots(&c, 2, &l1, &l2);
+    assert(cuts == 0 && l1 == 0 && l2 == 0);
+    assert(tb::countTSlots(b) >= 1);   // the slot exists, it just cannot pay yet
+    std::printf("  ok  test_eval_tslot_no_cutout_without_clear\n");
+}
+
 static void test_eval_overhangs() {
     // A hole is an overhang when a neighbouring column is open down to that row, so a
     // piece can slide in sideways. Enclosed cavities are not.
@@ -2101,6 +2177,7 @@ static void test_eval_dot_product() {
     ones.holes = 1.0f; ones.coveredCells = 1.0f; ones.bumpiness = 1.0f;
     ones.maxHeight = 1.0f; ones.heightPenalty = 1.0f; ones.rowTransitions = 1.0f;
     ones.columnTransitions = 1.0f; ones.wellDepth = 1.0f; ones.tSlotCount = 1.0f;
+    ones.tslot1 = 1.0f; ones.tslot2 = 1.0f;   // cutout counts are 0 at tAvail 0
     ones.b2bActive = 1.0f; ones.b2bCharge = 1.0f; ones.attackDealt = 1.0f;
     ones.rowsWithHoles = 1.0f; ones.overhangs = 1.0f;
     ones.plainClear = 1.0f; ones.wastedT = 1.0f;   // move terms: applied by the search, not here
@@ -2137,6 +2214,8 @@ static void test_eval_dot_product() {
     assert(d.holes < 0.0f && d.coveredCells < 0.0f);
     assert(d.rowTransitions < 0.0f && d.columnTransitions < 0.0f);
     assert(d.tSlotCount > 0.0f && d.b2bActive > 0.0f && d.b2bCharge > 0.0f && d.attackDealt > 0.0f);
+    // Cutout rewards: a ready TSD is worth more than a ready TSS, both worth taking.
+    assert(d.tslot1 > 0.0f && d.tslot2 > d.tslot1);
     // overhangs is a partial refund of holes (side-reachable ones are cheap to fix), so it is
     // positive but never outweighs holes itself.
     assert(d.rowsWithHoles < 0.0f);
@@ -2177,7 +2256,7 @@ static void test_weight_by_name() {
     assert(!tb::setWeightByName(w, "tSlotCounts", 1.0f));
 
     // the name table is exhaustive and every listed name is settable
-    assert(tb::weightNameCount() == 17);
+    assert(tb::weightNameCount() == 19);
     for (int i = 0; i < tb::weightNameCount(); ++i) {
         assert(tb::setWeightByName(w, tb::weightName(i), 1.0f));
     }
@@ -2193,9 +2272,9 @@ static void test_weight_by_name() {
     // weightValue reads back through the same table
     tb::Weights v = tb::defaultWeights();
     assert(tb::setWeightByName(v, "wastedT", -77.0f));
-    assert(std::fabs(tb::weightValue(v, 15) - (-77.0f)) < 1e-6f);
+    assert(std::fabs(tb::weightValue(v, 17) - (-77.0f)) < 1e-6f);   // wastedT moved to 17
     assert(std::fabs(tb::weightValue(v, 0) - tb::defaultWeights().holes) < 1e-6f);
-    assert(tb::weightValue(v, -1) == 0.0f && tb::weightValue(v, 17) == 0.0f);
+    assert(tb::weightValue(v, -1) == 0.0f && tb::weightValue(v, 19) == 0.0f);
 }
 
 // ---- Plan 3: search --------------------------------------------------------
@@ -2895,10 +2974,11 @@ static void test_snapshot_layout() {
 // the wrong feature through JS.
 // ---------------------------------------------------------------------------
 static void test_weight_table() {
-    assert(tb::weightNameCount() == 17);
-    static const char* expected[17] = {
+    assert(tb::weightNameCount() == 19);
+    static const char* expected[19] = {
         "holes", "coveredCells", "bumpiness", "maxHeight", "heightPenalty",
         "rowTransitions", "columnTransitions", "wellDepth", "tSlotCount",
+        "tslot1", "tslot2",
         "b2bActive", "attackDealt", "b2bCharge", "rowsWithHoles", "overhangs",
         "plainClear", "wastedT", "incomingRisk"
     };
@@ -2907,7 +2987,7 @@ static void test_weight_table() {
     }
     // core/eval.h's out-of-range contract is the empty string, NOT nullptr.
     assert(tb::weightName(-1)[0] == '\0');
-    assert(tb::weightName(17)[0] == '\0');
+    assert(tb::weightName(19)[0] == '\0');
 
     // The bridge and setWeightByName must agree, index for index.
     for (int i = 0; i < tb::weightNameCount(); ++i) {
@@ -2920,9 +3000,9 @@ static void test_weight_table() {
     }
     tb::Weights w = tb::defaultWeights();
     assert(tb::bindingsWeightSlot(w, -1) == nullptr);
-    assert(tb::bindingsWeightSlot(w, 17) == nullptr);
+    assert(tb::bindingsWeightSlot(w, 19) == nullptr);
     assert(tb::bindingsWeightSlot(w, 0) == &w.holes);        // spot-check the two ends
-    assert(tb::bindingsWeightSlot(w, 10) == &w.attackDealt);
+    assert(tb::bindingsWeightSlot(w, 12) == &w.attackDealt);
 }
 
 // ---------------------------------------------------------------------------
@@ -3344,6 +3424,10 @@ int main() {
     RUN(test_eval_well_depth);
     RUN(test_eval_rows_with_holes);
     RUN(test_eval_overhangs);
+    RUN(test_eval_tslot_cutout_tsd);
+    RUN(test_eval_tslot_cutout_needs_t);
+    RUN(test_eval_tslot_cutout_iterates);
+    RUN(test_eval_tslot_no_cutout_without_clear);
     RUN(test_eval_t_slots);
     RUN(test_eval_dot_product);
     RUN(test_weight_by_name);
