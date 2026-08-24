@@ -180,7 +180,7 @@ int mgRecoverPath(const BfsScratch& S, int32_t si, Action* out) {
 
 } // namespace
 
-void generateMoves(const Board& b, PieceType p, MoveList* out) {
+void generateMoves(const Board& b, PieceType p, MoveList* out, bool withPaths) {
     out->count = 0;
     if (p == PIECE_NONE) return;
 
@@ -260,35 +260,40 @@ void generateMoves(const Board& b, PieceType p, MoveList* out) {
         mgDecodeState(si, &sx, &sy, &sr);
         if (!collides(b, p, sr, sx, sy - 1)) continue;     // still falling
 
-        int len = -1;
+        int len = 0;
         bool lastRot = false;
         uint8_t kick = 255;
 
         if (S.parent[si] >= 0 && isRotateAction(static_cast<Action>(S.via[si]))) {
-            len = mgRecoverPath(S, si, buf);
             lastRot = true;
             kick = S.kick[si];
+            if (withPaths) len = mgRecoverPath(S, si, buf);
         } else if (S.rotSrc[si] >= 0 &&
                    classifySpin(b, p, sr, sx, sy, true, S.rotKick[si]) != SPIN_NONE) {
             // Tie-break (PRD 4.4): a longer rotation-last path is kept only when the
             // rotation earns a spin; otherwise the shortest path ends in a drop.
-            const int srcLen = mgRecoverPath(S, S.rotSrc[si], buf);
-            if (srcLen >= 0 && srcLen < MAX_PATH_LEN) {
-                buf[srcLen] = static_cast<Action>(S.rotAct[si]);
-                len = srcLen + 1;
-                lastRot = true;
-                kick = S.rotKick[si];
-            } else {
-                // Unreachable: the longest rotation path measured across 28,000
-                // adversarial boards is 31, against MAX_PATH_LEN 64. Assert
-                // rather than fall through quietly -- this branch keeps a valid
-                // path but drops lastWasRotation, which is precisely the silent
-                // spin-flag loss PRD 4.4 added the tie-break to prevent.
-                assert(false && "rotation path did not fit -- spin flag lost");
-                len = mgRecoverPath(S, si, buf);
+            lastRot = true;
+            kick = S.rotKick[si];
+            if (withPaths) {
+                const int srcLen = mgRecoverPath(S, S.rotSrc[si], buf);
+                if (srcLen >= 0 && srcLen < MAX_PATH_LEN) {
+                    buf[srcLen] = static_cast<Action>(S.rotAct[si]);
+                    len = srcLen + 1;
+                } else {
+                    // Unreachable: the longest rotation path measured across 28,000
+                    // adversarial boards is 31, against MAX_PATH_LEN 64. Assert
+                    // rather than fall through quietly -- this branch keeps a valid
+                    // path but drops lastWasRotation, which is precisely the silent
+                    // spin-flag loss PRD 4.4 added the tie-break to prevent.
+                    assert(false && "rotation path did not fit -- spin flag lost");
+                    len = mgRecoverPath(S, si, buf);
+                    lastRot = S.parent[si] >= 0 &&
+                              isRotateAction(static_cast<Action>(S.via[si]));
+                    kick = lastRot ? S.kick[si] : 255;
+                }
             }
         } else {
-            len = mgRecoverPath(S, si, buf);
+            if (withPaths) len = mgRecoverPath(S, si, buf);
         }
         assert(len >= 0 && "MAX_PATH_LEN too small -- a legal placement was dropped");
         if (len < 0) continue;   // release builds: skip rather than write past the end

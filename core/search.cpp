@@ -203,7 +203,7 @@ SearchResult search(const Board& b, PieceType current, PieceType hold,
                     newQueueIdx = parent.queueIdx + 1;
                 }
 
-                generateMoves(parent.board, piece, &S.moves);
+                generateMoves(parent.board, piece, &S.moves, /*withPaths=*/d == 0);
 
                 for (int m = 0; m < S.moves.count; ++m) {
                     const Placement& pl = S.moves.items[m];

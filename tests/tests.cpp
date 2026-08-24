@@ -1727,6 +1727,35 @@ static void test_mg_no_duplicate_placement_keys() {
     }
 }
 
+static void test_mg_pathless_matches() {
+    const char* cheese[] = {
+        "..........",
+        "....##....",
+        "...####...",
+        "##.#####.#",
+        "#.########",
+    };
+    const tb::Board boards[2] = { tb::Board{}, tb::boardFromAscii(cheese, 5) };
+    for (const tb::Board& b : boards) {
+        for (int p = 0; p < 7; ++p) {
+            tb::MoveList with{};
+            tb::MoveList without{};
+            tb::generateMoves(b, static_cast<tb::PieceType>(p), &with, true);
+            tb::generateMoves(b, static_cast<tb::PieceType>(p), &without, false);
+            assert(with.count == without.count);
+            for (int i = 0; i < with.count; ++i) {
+                const tb::Placement& a = with.items[i];
+                const tb::Placement& c = without.items[i];
+                assert(a.x == c.x && a.y == c.y && a.rot == c.rot);
+                assert(a.spin == c.spin && a.lastWasRotation == c.lastWasRotation);
+                assert(a.kickIndex == c.kickIndex);
+                assert(c.pathLen == 0);
+            }
+        }
+    }
+    std::printf("  ok  test_mg_pathless_matches\n");
+}
+
 static void test_mg_placement_fields_are_consistent() {
     const char* midRows[] = {
         "..........",
@@ -3224,6 +3253,7 @@ int main() {
     RUN(test_all_spin_immobile);
     RUN(test_bot_instance_hard_drops);
     RUN(test_mg_no_pointless_final_rotation);
+    RUN(test_mg_pathless_matches);
     RUN(test_immobile_requires_an_overhang);
     RUN(test_starved_search_still_sweeps_the_root);
     RUN(test_uniform_pacing);

@@ -104,7 +104,9 @@ struct MoveList {
 //
 // NOT REENTRANT: uses one file-static scratch arena. Call it from one thread at
 // a time and finish with the MoveList before calling again.
-void generateMoves(const Board& b, PieceType p, MoveList* out);
+// withPaths=false skips path recovery and leaves pathLen 0 -- the search interior
+// needs placements and spin flags, never paths; only the root move is ever replayed.
+void generateMoves(const Board& b, PieceType p, MoveList* out, bool withPaths = true);
 
 // PRD 4.6 classification. (x, y) is the T's piece origin, NOT its centre mino.
 // Assumes the piece is T; callers must not invoke it for anything else.
