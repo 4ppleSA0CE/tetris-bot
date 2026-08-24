@@ -30,6 +30,15 @@ def run(weights, seed, pieces, garbage, nodes=0):
     return json.loads(out.strip().splitlines()[-1])
 
 
+def run_vs(wa, wb, seed_a, seed_b, pieces, nodes):
+    cmd = [BIN, '--versus', wb, '--weights', wa, '--seed', str(seed_a),
+           '--seed2', str(seed_b), '--pieces', str(pieces), '--json']
+    if nodes:
+        cmd += ['--nodes', str(nodes)]
+    out = subprocess.run(cmd, capture_output=True, text=True, check=True).stdout
+    return json.loads(out.strip().splitlines()[-1])
+
+
 def fmt(names, vec):
     return ','.join(f'{n}={v:.1f}' for n, v in zip(names, vec))
 
@@ -49,6 +58,10 @@ def main():
     ap.add_argument('--sigma-scale', type=float, default=0.5, help='initial sigma = max(scale*|w|, 5)')
     ap.add_argument('--noise', type=float, default=0.05, help='constant variance floor: (noise*sigma0)^2')
     ap.add_argument('--init', default='', help='start mean, name=value,... (default: compiled)')
+    ap.add_argument('--duel', type=int, default=0,
+                    help='duel fitness: seed pairs per candidate vs the incumbent mean '
+                         '(2*pairs games, both orientations); --pieces caps each game; '
+                         '0 = solo+garbage fitness')
     ap.add_argument('--out', default='build/tune')
     a = ap.parse_args()
 
@@ -68,20 +81,48 @@ def main():
     for gen in range(a.gens):
         pop = [[rng.gauss(m, s) for m, s in zip(mean, sigma)] for _ in range(a.pop)]
         pop[0] = list(mean)                     # the incumbent always competes
-        seeds = [a.seed0 + gen * 10 + 1, a.seed0 + gen * 10 + 2]
-        jobs = [(i, r) for i in range(a.pop) for r in (0, 1)]
+        if a.duel:
+            pairs = [(a.seed0 + gen * 1000 + 2 * p, a.seed0 + gen * 1000 + 2 * p + 1)
+                     for p in range(a.duel)]
+            inc = fmt(names, mean)
+            jobs = [(i, sa, sb, sw) for i in range(a.pop) for sa, sb in pairs for sw in (0, 1)]
 
-        def job(ir):
-            i, r = ir
-            return run(fmt(names, pop[i]), seeds[r], a.pieces, a.garbage if r else '', a.nodes)
+            def job(t):
+                i, sa, sb, sw = t
+                cand = fmt(names, pop[i])
+                wa, wb = (inc, cand) if sw else (cand, inc)
+                r = run_vs(wa, wb, sa, sb, a.pieces, a.nodes)
+                cand_a = not sw
+                w = r['winner']
+                s = 0.5 if w == 'draw' else (1.0 if (w == 'A') == cand_a else 0.0)
+                m = (r['attackA'] - r['attackB']) * (1 if cand_a else -1)
+                return s, m
 
-        with ThreadPoolExecutor(max_workers=a.workers) as ex:
-            res = list(ex.map(job, jobs))
-        fit = []
-        for i in range(a.pop):
-            solo, pres = res[2 * i], res[2 * i + 1]
-            fit.append((solo['topouts'] + pres['topouts'], -(solo['attack'] + pres['attack']),
-                        solo['attack'], pres['attack']))
+            with ThreadPoolExecutor(max_workers=a.workers) as ex:
+                res = list(ex.map(job, jobs))
+            g = 2 * a.duel
+            fit = []
+            for i in range(a.pop):
+                chunk = res[i * g:(i + 1) * g]
+                score = sum(s for s, _ in chunk)
+                margin = sum(m for _, m in chunk)
+                fit.append((-score, -margin, score, margin))
+            seeds = pairs
+        else:
+            seeds = [a.seed0 + gen * 10 + 1, a.seed0 + gen * 10 + 2]
+            jobs = [(i, r) for i in range(a.pop) for r in (0, 1)]
+
+            def job(ir):
+                i, r = ir
+                return run(fmt(names, pop[i]), seeds[r], a.pieces, a.garbage if r else '', a.nodes)
+
+            with ThreadPoolExecutor(max_workers=a.workers) as ex:
+                res = list(ex.map(job, jobs))
+            fit = []
+            for i in range(a.pop):
+                solo, pres = res[2 * i], res[2 * i + 1]
+                fit.append((solo['topouts'] + pres['topouts'], -(solo['attack'] + pres['attack']),
+                            solo['attack'], pres['attack']))
         order = sorted(range(a.pop), key=lambda i: fit[i][:2])
         elite = order[:a.elite]
         mean = [sum(pop[i][k] for i in elite) / a.elite for k in range(len(names))]
@@ -89,9 +130,14 @@ def main():
         sigma = [(v + f) ** 0.5 for v, f in zip(var, floor)]
 
         best = order[0]
-        print(f"gen {gen:02d} seeds {seeds} best top-outs {fit[best][0]} attack "
-              f"{fit[best][2]}+{fit[best][3]}  elite-avg attack "
-              f"{sum(-fit[i][1] for i in elite) / a.elite:.0f}  incumbent rank {order.index(0)}")
+        if a.duel:
+            print(f"gen {gen:02d} best score {fit[best][2]:.1f}/{2 * a.duel} "
+                  f"margin {fit[best][3]:+d}  elite-avg score "
+                  f"{sum(fit[i][2] for i in elite) / a.elite:.2f}  incumbent rank {order.index(0)}")
+        else:
+            print(f"gen {gen:02d} seeds {seeds} best top-outs {fit[best][0]} attack "
+                  f"{fit[best][2]}+{fit[best][3]}  elite-avg attack "
+                  f"{sum(-fit[i][1] for i in elite) / a.elite:.0f}  incumbent rank {order.index(0)}")
         print(f"  mean: {fmt(names, mean)}")
         sys.stdout.flush()
         with open(os.path.join(a.out, f'gen{gen:02d}.json'), 'w') as f:
