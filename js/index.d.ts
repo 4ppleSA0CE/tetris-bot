@@ -17,6 +17,7 @@ export interface BotModule {
     botTick(handle: number, nowMs: number): boolean;
     botSnapshotPtr(handle: number): number;
     botSetPPS(handle: number, pps: number): boolean;
+    botQueueGarbage(handle: number, lines: number): boolean;
     botSetWeight(handle: number, index: number, value: number): boolean;
     botReset(handle: number, seed: number): boolean;
     botDestroy(handle: number): boolean;

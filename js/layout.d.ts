@@ -73,6 +73,7 @@ export declare class SnapshotView implements Snapshot {
     get comboCount(): number;
     get pps(): number;
     get state(): number;
+    get pendingGarbage(): number;
     /** Events written this tick. The array is reused; copy what you keep. */
     get events(): readonly SnapshotEvent[];
 }

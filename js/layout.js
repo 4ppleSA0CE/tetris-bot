@@ -106,6 +106,7 @@ export class SnapshotView {
     get comboCount() { return this.u16('comboCount'); }
     get pps() { return this.f32('pps'); }
     get state() { return this.u8('state'); }
+    get pendingGarbage() { return this.u8('pendingGarbage'); }
     /** Events written this tick. The array is reused; copy what you keep. */
     get events() {
         const n = this.u8('eventCount');

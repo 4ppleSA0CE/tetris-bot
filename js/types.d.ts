@@ -86,6 +86,8 @@ export interface Snapshot {
     readonly pps: number;
     /** 0 idle, 1 playing, 2 topped out. */
     readonly state: number;
+    /** Incoming garbage lines queued but not yet risen. */
+    readonly pendingGarbage: number;
 }
 export interface BotConfig {
     seed?: number;
@@ -115,6 +117,8 @@ export interface TetrisBot {
     /** Live view; valid until the next tick(). */
     snapshot(): Snapshot;
     setPPS(pps: number): void;
+    /** Queue incoming garbage lines (1-20); rises after the next lock, attack cancels first. */
+    queueGarbage(lines: number): void;
     reset(seed?: number): void;
     destroy(): void;
 }

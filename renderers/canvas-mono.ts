@@ -179,6 +179,19 @@ function drawWell(ctx: CanvasRenderingContext2D, th: Theme, g: Geometry): void {
   ctx.strokeRect(g.wellX + 0.5, g.wellY + 0.5, g.wellW, g.wellH);
 }
 
+// Incoming-garbage warning: a thin strip up the left well edge, one visible row per
+// pending line, drawn from the bottom -- the TETR.IO convention players expect.
+function drawPendingGarbage(
+  ctx: CanvasRenderingContext2D, s: Snapshot, th: Theme, g: Geometry,
+): void {
+  const lines = Math.min(s.pendingGarbage ?? 0, VISIBLE_ROWS);
+  if (lines <= 0) return;
+  // ponytail: the Z piece's theme colour doubles as the danger tint; a dedicated
+  // --bot-danger CSS variable can replace it if the palette ever diverges.
+  ctx.fillStyle = th.piece[6] ?? th.text;
+  ctx.fillRect(g.wellX - 4, g.wellY + (VISIBLE_ROWS - lines) * g.cell, 3, lines * g.cell);
+}
+
 function drawLockedCells(
   ctx: CanvasRenderingContext2D, s: Snapshot, th: Theme, g: Geometry,
 ): void {
@@ -381,6 +394,7 @@ export function createRenderer(opts: RendererOptions): Renderer {
     ctx.fillStyle = th.bg;
     ctx.fillRect(0, 0, g.w, g.h);
     drawWell(ctx, th, g);
+    drawPendingGarbage(ctx, s, th, g);
     drawLockedCells(ctx, s, th, g);
     drawGhost(ctx, s, th, g);
     drawActivePiece(ctx, s, th, g);

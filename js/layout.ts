@@ -129,6 +129,7 @@ export class SnapshotView implements Snapshot {
   get comboCount(): number { return this.u16('comboCount'); }
   get pps(): number { return this.f32('pps'); }
   get state(): number { return this.u8('state'); }
+  get pendingGarbage(): number { return this.u8('pendingGarbage'); }
 
   /** Events written this tick. The array is reused; copy what you keep. */
   get events(): readonly SnapshotEvent[] {

@@ -140,6 +140,10 @@ export async function createTetrisBot(config = {}) {
             if (!destroyed)
                 mod.botSetPPS(handle, clampPPS(pps));
         },
+        queueGarbage(lines) {
+            if (!destroyed)
+                mod.botQueueGarbage(handle, lines | 0);
+        },
         reset(seed) {
             if (!destroyed)
                 mod.botReset(handle, seed ?? -1);
