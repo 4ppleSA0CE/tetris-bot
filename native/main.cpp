@@ -538,7 +538,7 @@ int main(int argc, char** argv) {
     times.reserve(static_cast<size_t>(pieces));
 
     uint32_t topOuts = 0;
-    uint32_t basePieces = 0, baseLines = 0, baseAttack = 0, baseTspins = 0;
+    uint32_t basePieces = 0, baseLines = 0, baseAttack = 0, baseTspins = 0, baseSurge = 0;
     uint16_t maxB2b = 0;
     double   hSum = 0.0, hSumSq = 0.0;
     int      hMin = tb::BOARD_H + 1, hMax = 0;
@@ -567,6 +567,7 @@ int main(int argc, char** argv) {
             baseLines  += game.linesCleared();
             baseAttack += game.attackSent();
             baseTspins += game.tSpinCount();
+            baseSurge  += game.surgeSent();
             game.reset(seed + topOuts);
         }
     }
@@ -575,6 +576,7 @@ int main(int argc, char** argv) {
     const uint32_t totalLines  = baseLines  + game.linesCleared();
     const uint32_t totalAttack = baseAttack + game.attackSent();
     const uint32_t totalTspins = baseTspins + game.tSpinCount();
+    const uint32_t totalSurge  = baseSurge  + game.surgeSent();
 
     if (stats) {
         std::sort(times.begin(), times.end());
@@ -592,6 +594,7 @@ int main(int argc, char** argv) {
         std::printf("%-12s%5u\n", "attack", totalAttack);
         std::printf("%-12s%5u   (%.2f / 100)\n", "spins", totalTspins, rate);
         std::printf("%-12s%5u\n", "max b2b", static_cast<unsigned>(maxB2b));
+        std::printf("%-12s%5u\n", "surge", totalSurge);
         std::printf("%-12s%5u\n", "top-outs", topOuts);
         std::printf("%-12sp50 %.1f  p99 %.1f\n", "search ms", pct(0.50), pct(0.99));
     }
