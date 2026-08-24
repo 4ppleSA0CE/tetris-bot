@@ -878,29 +878,48 @@ static void test_b2b_is_maintained_by_a_mini_that_clears_lines() {
     assert(!tb::b2bMaintaining(ci(0, tb::SPIN_MINI, false)));
 }
 
-static void test_attack_combo_table_indexing() {
-    // Combo bonus {0,0,1,1,1,2,2,3,3,4,4,4,5}, indexed by the number of
-    // consecutive PRIOR clears. A double has base 1, so expect base + bonus.
-    const int bonus[13] = {0, 0, 1, 1, 1, 2, 2, 3, 3, 4, 4, 4, 5};
-    for (int combo = 0; combo < 13; ++combo)
-        assert(tb::computeAttack(ci(2, tb::SPIN_NONE, false), false, combo) == 1 + bonus[combo]);
-    // A negative count is clamped to the first entry.
+// TETR.IO "Multiplier" combo. With c = consecutive PRIOR clears (0 for the first):
+//     g = (base + b2b) * (1 + 0.25c);  if c >= 2, g = max(g, ln(1 + 1.25c));  round down.
+// Expected values below are the formula worked by hand, not read back from the code.
+static void test_attack_combo_multiplier() {
+    // double (base 1): 1, 1.25, 1.5, 1.75, 2, 2.25, 2.5, 2.75, 3 ... 4 at c=12, 6 at c=20
+    const int dbl[13] = {1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 4};
+    for (int c = 0; c < 13; ++c) {
+        assert(tb::computeAttack(ci(2, tb::SPIN_NONE, false), false, c) == dbl[c]);
+    }
+    assert(tb::computeAttack(ci(2, tb::SPIN_NONE, false), false, 20) == 6);
+    // quad (base 4): 4 * 1.25 = 5 at c=1; TSD with b2b (5) * 1.75 = 8.75 -> 8 at c=3
+    assert(tb::computeAttack(ci(4, tb::SPIN_NONE, false), false, 1) == 5);
+    assert(tb::computeAttack(ci(2, tb::SPIN_FULL, false), true, 3) == 8);
+    assert(tb::computeAttack(ci(2, tb::SPIN_FULL, false), true, 4) == 10);
+    // negative combo counts are treated as 0
     assert(tb::computeAttack(ci(2, tb::SPIN_NONE, false), false, -1) == 1);
 }
 
-static void test_attack_combo_clamps_at_the_last_entry() {
-    const int atTwelve = tb::computeAttack(ci(2, tb::SPIN_NONE, false), false, 12);
-    assert(atTwelve == 6);   // base 1 + bonus 5
-    assert(tb::computeAttack(ci(2, tb::SPIN_NONE, false), false, 13) == atTwelve);
-    assert(tb::computeAttack(ci(2, tb::SPIN_NONE, false), false, 50) == atTwelve);
-    assert(tb::computeAttack(ci(2, tb::SPIN_NONE, false), false, 100000) == atTwelve);
+// A base-0 clear (single, mini single) is lifted by the log floor from the third clear
+// of a combo on: ln(3.5)=1.25 -> 1 at c=2, ln(8.5)=2.14 -> 2 at c=6, ln(21)=3.04 -> 3 at c=16.
+static void test_attack_combo_log_floor_for_zero_base() {
+    assert(tb::computeAttack(ci(1, tb::SPIN_NONE, false), false, 0) == 0);
+    assert(tb::computeAttack(ci(1, tb::SPIN_NONE, false), false, 1) == 0);
+    assert(tb::computeAttack(ci(1, tb::SPIN_NONE, false), false, 2) == 1);
+    assert(tb::computeAttack(ci(1, tb::SPIN_NONE, false), false, 5) == 1);
+    assert(tb::computeAttack(ci(1, tb::SPIN_NONE, false), false, 6) == 2);
+    assert(tb::computeAttack(ci(1, tb::SPIN_NONE, false), false, 15) == 2);
+    assert(tb::computeAttack(ci(1, tb::SPIN_NONE, false), false, 16) == 3);
+    assert(tb::computeAttack(ci(1, tb::SPIN_MINI, false), false, 2) == 1);
+}
+
+// The multiplier never clamps: a double at c=50 is 1 * 13.5 -> 13.
+static void test_attack_combo_multiplier_is_unbounded() {
+    assert(tb::computeAttack(ci(2, tb::SPIN_NONE, false), false, 50) == 13);
+    assert(tb::computeAttack(ci(4, tb::SPIN_NONE, false), false, 100) == 104);
 }
 
 static void test_attack_perfect_clear_adds_ten() {
     assert(tb::computeAttack(ci(4, tb::SPIN_NONE, true), false, 0) == 14);
     assert(tb::computeAttack(ci(1, tb::SPIN_NONE, true), false, 0) == 10);
     // Stacks with the b2b bonus and the combo bonus.
-    assert(tb::computeAttack(ci(4, tb::SPIN_NONE, true), true, 5) == 4 + 1 + 2 + 10);
+    assert(tb::computeAttack(ci(4, tb::SPIN_NONE, true), true, 5) == 11 + 10);   // (4+1)*2.25 = 11.25
 }
 
 static void test_attack_is_zero_when_no_lines_clear() {
@@ -2783,8 +2802,9 @@ int main() {
     RUN(test_attack_b2b_bonus_is_not_applied);
     RUN(test_b2bMaintaining_rules);
     RUN(test_b2b_is_maintained_by_a_mini_that_clears_lines);
-    RUN(test_attack_combo_table_indexing);
-    RUN(test_attack_combo_clamps_at_the_last_entry);
+    RUN(test_attack_combo_multiplier);
+    RUN(test_attack_combo_log_floor_for_zero_base);
+    RUN(test_attack_combo_multiplier_is_unbounded);
     RUN(test_attack_perfect_clear_adds_ten);
     RUN(test_attack_is_zero_when_no_lines_clear);
     RUN(test_mg_t_center_is_origin_plus_one_one);

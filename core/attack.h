@@ -30,7 +30,8 @@ bool b2bMaintaining(const ClearInfo& c);
 // Base (TETR.IO multiplayer table): single 0, double 1, triple 2, quad 4; mini spin
 // 0/1/2/4 for 1/2/3/4 lines; full T-spin 2/4/6 for 1/2/3 lines (10 for a spin quad).
 // Plus 1 when the clear is b2bMaintaining AND b2bActive.
-// Plus the combo bonus {0,0,1,1,1,2,2,3,3,4,4,4,5}, clamped at the last entry.
+// Then the TETR.IO multiplier combo with c = comboCount: x (1 + 0.25c), and for c >= 2
+// at least ln(1 + 1.25c); rounded down. Unbounded.
 // Plus 10 for a perfect clear. Always 0 when no lines cleared.
 int computeAttack(const ClearInfo& c, bool b2bActive, int comboCount);
 
