@@ -54,7 +54,7 @@ void printBoard(const tb::Board& b, unsigned index) {
 
 void usage() {
     std::fprintf(stderr,
-                 "usage: tetris_bot [--seed N] [--pieces N] [--stats] [--print]\n"
+                 "usage: tetris_bot [--seed N] [--pieces N] [--stats] [--json] [--print]\n"
                  "                  [--depth N] [--width N] [--budget MS] [--heights]\n"
                  "                  [--weights name=value,...]\n"
                  "       tetris_bot --random [--seed N] [--pieces N] [--print] [--stats]\n"
@@ -496,7 +496,7 @@ int main(int argc, char** argv) {
 
     uint32_t seed   = 1;
     int      pieces = 100;
-    bool     stats = false, print = false, heights = false, randomMode = false;
+    bool     stats = false, print = false, heights = false, randomMode = false, json = false;
     tb::SearchConfig cfg;
 
     for (int i = 1; i < argc; ++i) {
@@ -517,6 +517,7 @@ int main(int argc, char** argv) {
             cfg.timeBudgetMs = parsePositiveFloatArg("--budget", need("--budget"));
         else if (!std::strcmp(a, "--weights")) { if (!applyWeightSpec(cfg.weights, need("--weights"))) return 2; }
         else if (!std::strcmp(a, "--stats"))   stats = true;
+        else if (!std::strcmp(a, "--json"))    json = true;
         else if (!std::strcmp(a, "--heights")) heights = true;
         else if (!std::strcmp(a, "--print"))   print = true;
         else if (!std::strcmp(a, "--random"))  randomMode = true;
@@ -578,14 +579,19 @@ int main(int argc, char** argv) {
     const uint32_t totalTspins = baseTspins + game.tSpinCount();
     const uint32_t totalSurge  = baseSurge  + game.surgeSent();
 
+    std::sort(times.begin(), times.end());
+    auto pct = [&](double p) -> double {
+        if (times.empty()) return 0.0;
+        size_t idx = static_cast<size_t>(p * static_cast<double>(times.size() - 1) + 0.5);
+        if (idx >= times.size()) idx = times.size() - 1;
+        return static_cast<double>(times[idx]);
+    };
+    const double hN   = static_cast<double>(times.size());
+    const double hAvg = hN > 0.0 ? hSum / hN : 0.0;
+    double hVar = hN > 0.0 ? (hSumSq / hN - hAvg * hAvg) : 0.0;
+    if (hVar < 0.0) hVar = 0.0;
+
     if (stats) {
-        std::sort(times.begin(), times.end());
-        auto pct = [&](double p) -> double {
-            if (times.empty()) return 0.0;
-            size_t idx = static_cast<size_t>(p * static_cast<double>(times.size() - 1) + 0.5);
-            if (idx >= times.size()) idx = times.size() - 1;
-            return static_cast<double>(times[idx]);
-        };
         const double rate = totalPieces ? 100.0 * static_cast<double>(totalTspins) /
                                               static_cast<double>(totalPieces)
                                         : 0.0;
@@ -600,14 +606,20 @@ int main(int argc, char** argv) {
     }
 
     if (heights) {
-        const double n = static_cast<double>(times.size());
-        const double avg = n > 0.0 ? hSum / n : 0.0;
-        double var = n > 0.0 ? (hSumSq / n - avg * avg) : 0.0;
-        if (var < 0.0) var = 0.0;
-        std::printf("%-12s%5.2f\n", "avg height", avg);
+        std::printf("%-12s%5.2f\n", "avg height", hAvg);
         std::printf("%-12s%5d\n",   "min height", hMin > tb::BOARD_H ? 0 : hMin);
         std::printf("%-12s%5d\n",   "max height", hMax);
-        std::printf("%-12s%5.2f\n", "height sd",  std::sqrt(var));
+        std::printf("%-12s%5.2f\n", "height sd",  std::sqrt(hVar));
+    }
+
+    // Machine-readable summary for tools/bench.py and tools/tune.py. One object, one line.
+    if (json) {
+        std::printf("{\"pieces\":%u,\"lines\":%u,\"attack\":%u,\"spins\":%u,\"maxB2b\":%u,"
+                    "\"surge\":%u,\"topouts\":%u,\"garbage\":%u,\"p50\":%.3f,\"p99\":%.3f,"
+                    "\"avgHeight\":%.3f,\"maxHeight\":%d}\n",
+                    totalPieces, totalLines, totalAttack, totalTspins,
+                    static_cast<unsigned>(maxB2b), totalSurge, topOuts, 0u,
+                    pct(0.50), pct(0.99), hAvg, hMax);
     }
     return 0;
 }
