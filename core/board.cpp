@@ -42,6 +42,14 @@ int clearLines(Board& b) {
     return removed;
 }
 
+void addGarbage(Board& b, int lines, int holeCol) {
+    if (lines <= 0) return;
+    if (lines > BOARD_H) lines = BOARD_H;
+    for (int y = BOARD_H - 1; y >= lines; --y) b.rows[y] = b.rows[y - lines];
+    const uint16_t row = static_cast<uint16_t>(FULL_ROW & ~(1u << holeCol));
+    for (int y = 0; y < lines; ++y) b.rows[y] = row;
+}
+
 int dropY(const Board& b, PieceType p, Rot r, int x, int y) {
     // Precondition: (x, y) must not already collide. Violating it silently
     // returns the caller's own y -- and the search evaluates many candidates

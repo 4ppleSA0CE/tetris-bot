@@ -300,6 +300,22 @@ static void test_clearLines_four_rows_is_a_tetris() {
 
 // -------------------------------------- core/board.h: drop, heights, emptiness
 
+static void test_board_add_garbage() {
+    const char* rows[] = { "#.........", "##........" };
+    tb::Board b = tb::boardFromAscii(rows, 2);
+    b.rows[tb::BOARD_H - 1] = 0x1;                       // will be pushed off the top
+    tb::addGarbage(b, 2, 3);
+    assert(b.rows[0] == (tb::FULL_ROW & ~(1u << 3)));
+    assert(b.rows[1] == (tb::FULL_ROW & ~(1u << 3)));
+    assert(b.rows[2] == 0x3);                            // was y=0
+    assert(b.rows[3] == 0x1);                            // was y=1
+    assert(b.rows[4] == 0);
+    assert(b.rows[tb::BOARD_H - 1] == 0);
+    tb::Board c = b;
+    tb::addGarbage(c, 0, 5);                             // zero lines is a no-op
+    for (int y = 0; y < tb::BOARD_H; ++y) assert(c.rows[y] == b.rows[y]);
+}
+
 static void test_dropY_falls_to_the_floor_on_an_empty_board() {
     const tb::Board empty{};
     // O has cells in its box bottom row, so it rests at y = 0.
@@ -2833,6 +2849,7 @@ int main() {
     RUN(test_clearLines_single_row_shifts_above_down_by_one);
     RUN(test_clearLines_two_non_adjacent_rows);
     RUN(test_clearLines_four_rows_is_a_tetris);
+    RUN(test_board_add_garbage);
     RUN(test_dropY_falls_to_the_floor_on_an_empty_board);
     RUN(test_dropY_lands_on_a_stack);
     RUN(test_dropY_is_idempotent_at_rest);

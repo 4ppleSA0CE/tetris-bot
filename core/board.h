@@ -19,6 +19,10 @@ int clearLines(Board& b);
 // Lowest legal y at or below `y`. Assumes (x, y) itself does not collide.
 int dropY(const Board& b, PieceType p, Rot r, int x, int y);
 
+// Shifts every row up by `lines` (rows pushed past the top are lost) and fills the bottom
+// `lines` rows with garbage: FULL_ROW minus the bit at `holeCol`. No-op for lines <= 0.
+void addGarbage(Board& b, int lines, int holeCol);
+
 // One above the highest filled cell in `col`; 0 when the column is empty.
 int columnHeight(const Board& b, int col);
 
