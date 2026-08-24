@@ -1247,10 +1247,8 @@ static void test_mg_every_placement_is_legal_and_grounded() {
                 assert(!tb::collides(boards[bi], p, pl.rot, pl.x, pl.y));
                 assert(tb::collides(boards[bi], p, pl.rot, pl.x, pl.y - 1));
                 assert(pl.pathLen <= tb::MAX_PATH_LEN);
-                // All-spin: J/L/S/Z may now carry a spin flag too. I and O never can,
-                // and only T can ever be a MINI.
-                if (p == tb::PIECE_I || p == tb::PIECE_O) assert(pl.spin == tb::SPIN_NONE);
-                if (pl.spin == tb::SPIN_MINI) assert(p == tb::PIECE_T);
+                // All-mini+: any piece may carry a MINI flag, only T can be FULL.
+                if (pl.spin == tb::SPIN_FULL) assert(p == tb::PIECE_T);
             }
         }
     }
@@ -2581,13 +2579,15 @@ static void test_game_bot_instance_parity() {
 }
 
 // ---------------------------------------------------------------------------
-// All-spin (portfolio parity). J/L/S/Z spin when they end up immobile after a
-// rotation; T keeps its own corner rule; I and O never spin.
+// All-mini+ (TETR.IO Beta 1.5.0+). Every piece other than T scores a MINI when it is
+// immobile after a rotation - I and O included, and never a FULL. T keeps the corner
+// rule for FULL/MINI, and falls back to the immobile rule for a MINI when it has fewer
+// than three corners.
 // ---------------------------------------------------------------------------
 static void test_all_spin_immobile() {
     using namespace tb;
     // Box a piece in completely: fill the bottom rows except the exact four cells
-    // the piece occupies, so it cannot step left, right, or down.
+    // the piece occupies, so it cannot step left, right, up or down.
     auto boxed = [](PieceType p, Rot r, int x, int y) {
         Board b{};
         for (int row = 0; row < 6; ++row) b.rows[row] = FULL_ROW;
@@ -2600,22 +2600,14 @@ static void test_all_spin_immobile() {
         return b;
     };
 
-    const PieceType spinners[4] = { PIECE_J, PIECE_L, PIECE_S, PIECE_Z };
+    const PieceType spinners[6] = { PIECE_I, PIECE_J, PIECE_L, PIECE_O, PIECE_S, PIECE_Z };
     for (PieceType p : spinners) {
         Board b = boxed(p, ROT_0, 3, 1);
         assert(!collides(b, p, ROT_0, 3, 1));            // the hole really fits it
         assert(isImmobile(b, p, ROT_0, 3, 1));
-        assert(classifySpin(b, p, ROT_0, 3, 1, true, 0) == SPIN_FULL);
+        assert(classifySpin(b, p, ROT_0, 3, 1, true, 0) == SPIN_MINI);
         // A spin requires the last action to have been a rotation.
         assert(classifySpin(b, p, ROT_0, 3, 1, false, 0) == SPIN_NONE);
-    }
-
-    // I and O are boxed in identically and still never count.
-    const PieceType excluded[2] = { PIECE_I, PIECE_O };
-    for (PieceType p : excluded) {
-        Board b = boxed(p, ROT_0, 3, 1);
-        assert(isImmobile(b, p, ROT_0, 3, 1));
-        assert(classifySpin(b, p, ROT_0, 3, 1, true, 0) == SPIN_NONE);
     }
 
     // Room to move is not a spin.
@@ -2623,10 +2615,30 @@ static void test_all_spin_immobile() {
     assert(!isImmobile(empty, PIECE_S, ROT_0, 3, 1));
     assert(classifySpin(empty, PIECE_S, ROT_0, 3, 1, true, 0) == SPIN_NONE);
 
-    // T still routes to its own rule, not to the immobile one.
+    // T still routes to its own rule first: boxed in, all four corners are filled and
+    // both front corners too, so this is a FULL spin, not the immobile MINI.
     Board tb_ = boxed(PIECE_T, ROT_0, 3, 1);
+    assert(classifySpin(tb_, PIECE_T, ROT_0, 3, 1, true, 0) == SPIN_FULL);
     assert(classifySpin(tb_, PIECE_T, ROT_0, 3, 1, true, 0)
            == classifyTSpin(tb_, ROT_0, 3, 1, true, 0));
+
+    // T with only two corners (the floor pair) in a 3x2 cavity: nothing without an
+    // overhang; with one it is immobile and all-mini+ awards a MINI.
+    const char* cavity[] = {
+        "....#.....",   // y = 2: an overhang over the nub
+        "###...####",   // y = 1
+        "###...####",   // y = 0
+    };
+    Board cav = boardFromAscii(cavity, 3);
+    cav.rows[2] = 0;                                        // no overhang yet
+    assert(!collides(cav, PIECE_T, ROT_0, 3, -1));          // nub at (4,1), stem on the floor
+    assert(classifyTSpin(cav, ROT_0, 3, -1, true, 0) == SPIN_NONE);
+    assert(classifySpin(cav, PIECE_T, ROT_0, 3, -1, true, 0) == SPIN_NONE);
+    cav = boardFromAscii(cavity, 3);
+    assert(isImmobile(cav, PIECE_T, ROT_0, 3, -1));
+    assert(classifyTSpin(cav, ROT_0, 3, -1, true, 0) == SPIN_MINI);
+    assert(classifySpin(cav, PIECE_T, ROT_0, 3, -1, true, 0) == SPIN_MINI);
+    assert(classifySpin(cav, PIECE_T, ROT_0, 3, -1, false, 0) == SPIN_NONE);
 }
 
 // TETR.IO all-mini+: "immobile" means the piece cannot move left, right, UP or down.

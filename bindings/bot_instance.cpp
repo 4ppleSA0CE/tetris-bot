@@ -241,9 +241,6 @@ void BotInstance::lockCurrent() {
     ci.lines        = static_cast<uint8_t>(lines);
     ci.spin         = plan_.spin;
     ci.perfectClear = (lines > 0) && isEmpty(board_);
-    // Mirrors core/game.cpp: a spin flag is only ever set for T, whose bounding box
-    // spans three rows, so {lines:4, spin:*} is physically impossible.
-    assert(!(ci.lines == 4 && ci.spin != SPIN_NONE));
 
     const bool wasB2B = b2bActive_;
     attackSent_   += static_cast<uint32_t>(computeAttack(ci, wasB2B, comboCount_));

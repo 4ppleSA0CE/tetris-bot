@@ -88,11 +88,6 @@ void Game::stepPiece() {
     ci.lines        = (uint8_t)lines;
     ci.spin         = r.placement.spin;
     ci.perfectClear = (lines > 0) && isEmpty(board_);
-    // A spin flag is only ever set for T (core/movegen.cpp), and a T's bounding box spans
-    // three rows, so no spin can clear four lines. {lines:4, spin:*} is a physically
-    // impossible ClearInfo that computeAttack nonetheless scores (0 for mini, 6 for full);
-    // this guard pins that it is never built from a real placement.
-    assert(!(ci.lines == 4 && ci.spin != SPIN_NONE));
     const int atk = computeAttack(ci, /*b2bActive=*/b2bActive_, /*comboCount=*/(int)comboCount_);
 
     ++piecesPlaced_;

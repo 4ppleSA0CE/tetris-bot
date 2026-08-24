@@ -63,8 +63,10 @@ SpinKind classifyTSpin(const Board& b, Rot r, int x, int y,
         if (filled[i]) ++occupied;
     }
 
-    // 2. HARD GATE. Fewer than three corners is not a mini, it is nothing.
-    if (occupied < 3) return SPIN_NONE;
+    // 2. Fewer than three corners is not a T-spin. All-mini+ (TETR.IO Beta 1.5.0)
+    //    still awards a MINI if the T is immobile, the same test every other piece
+    //    gets; otherwise it is nothing.
+    if (occupied < 3) return isImmobile(b, PIECE_T, r, x, y) ? SPIN_MINI : SPIN_NONE;
 
     // 3. Both front corners -> proper T-spin. (With occupied >= 3, front is
     //    always 1 or 2, so this and the fall-through are exhaustive.)
@@ -82,20 +84,21 @@ SpinKind classifyTSpin(const Board& b, Rot r, int x, int y,
     return SPIN_MINI;
 }
 
-// All-spin classification (portfolio parity: components/tetris/engine/engine.ts).
-//   T          -> the 3-corner + front-pair rule above, which alone distinguishes
-//                 MINI from FULL. T is the only piece with a mini.
-//   J, L, S, Z -> immobile after a rotation is a full spin.
-//   I, O       -> never spin. Excluded deliberately, not by oversight: an immobile
-//                 I or O is a hole the stack happened to close around, not a spin
-//                 anyone placed, and counting it would hand the bot free back-to-back.
-// Every branch still requires the last successful action to have been a rotation.
+// All-mini+ classification (TETR.IO Beta 1.5.0+, the default in every multiplayer mode).
+//   T          -> the 3-corner + front-pair rule above for FULL vs MINI, with the
+//                 immobile rule as a MINI fallback below three corners. T is the only
+//                 piece that can ever be FULL.
+//   every other piece, I and O included
+//              -> immobile after a rotation is a MINI. Never FULL: TETR.IO pays a mini
+//                 0/1/2/4 for 1/2/3/4 lines, and it exists to keep back-to-back alive.
+// Every branch requires the last successful action to have been a rotation. O turns
+// in place, so any O locked under an overhang in a snug 2-wide slot is an O-spin -
+// rare in human play, legal in TETR.IO, and the BFS will find it.
 SpinKind classifySpin(const Board& b, PieceType p, Rot r, int x, int y,
                       bool lastWasRotation, uint8_t kickIndex) {
     if (p == PIECE_T) return classifyTSpin(b, r, x, y, lastWasRotation, kickIndex);
-    if (p == PIECE_I || p == PIECE_O) return SPIN_NONE;
     if (!lastWasRotation) return SPIN_NONE;
-    return isImmobile(b, p, r, x, y) ? SPIN_FULL : SPIN_NONE;
+    return isImmobile(b, p, r, x, y) ? SPIN_MINI : SPIN_NONE;
 }
 
 // ---------------------------------------------------------------------------

@@ -69,7 +69,7 @@ inline bool isRotateAction(Action a) {
 struct Placement {
     int8_t   x, y;             // piece origin = bounding box lower-left corner
     Rot      rot;
-    SpinKind spin;             // SPIN_NONE unless piece is T and 4.6 holds
+    SpinKind spin;             // all-mini+: MINI for any immobile spin, FULL only for T
     bool     lastWasRotation;
     // kickIndex: 0..4, the SRS kick-test index of the final 90-degree rotation.
     // 255 means "not a 90-degree rotation": either the last action was a
@@ -112,8 +112,9 @@ void generateMoves(const Board& b, PieceType p, MoveList* out);
 SpinKind classifyTSpin(const Board& b, Rot r, int x, int y,
                        bool lastWasRotation, uint8_t kickIndex);
 
-// All-spin classification for every piece. T defers to classifyTSpin; J/L/S/Z use
-// the immobile rule; I and O never spin. Exposed for tests.
+// All-mini+ classification for every piece. T defers to classifyTSpin (FULL or MINI,
+// with an immobile MINI fallback); every other piece is a MINI when immobile after a
+// rotation. Exposed for tests.
 SpinKind classifySpin(const Board& b, PieceType p, Rot r, int x, int y,
                       bool lastWasRotation, uint8_t kickIndex);
 
