@@ -12,13 +12,15 @@ from concurrent.futures import ThreadPoolExecutor
 BIN = './build/tetris_bot'
 
 
-def game(wa, wb, seed_a, seed_b, pieces, nodes):
+def game(wa, wb, seed_a, seed_b, pieces, nodes, nodes_b=0):
     cmd = [BIN, '--versus', wb, '--seed', str(seed_a), '--seed2', str(seed_b),
            '--pieces', str(pieces), '--json']
     if wa:
         cmd += ['--weights', wa]
     if nodes:
         cmd += ['--nodes', str(nodes)]
+    if nodes_b:
+        cmd += ['--nodes2', str(nodes_b)]
     out = subprocess.run(cmd, capture_output=True, text=True, check=True).stdout
     return json.loads(out.strip().splitlines()[-1])
 
@@ -31,6 +33,8 @@ def main():
     ap.add_argument('--seed0', type=int, default=40000)
     ap.add_argument('--pieces', type=int, default=2000)
     ap.add_argument('--nodes', type=int, default=5200)
+    ap.add_argument('--nodes-b', type=int, default=0,
+                    help='opponent node budget (candidate keeps --nodes): asymmetric depth duel')
     ap.add_argument('--workers', type=int, default=10)
     args = ap.parse_args()
 
@@ -42,7 +46,10 @@ def main():
 
     def run(j):
         wa, wb, s1, s2, swapped = j
-        r = game(wa, wb, s1, s2, args.pieces, args.nodes)
+        # The node budget follows the candidate across seats exactly like the weights do.
+        na = args.nodes if not swapped else (args.nodes_b or args.nodes)
+        nb = (args.nodes_b or args.nodes) if not swapped else args.nodes
+        r = game(wa, wb, s1, s2, args.pieces, na, nb if nb != na else 0)
         w = r['winner']
         if w == 'draw':
             return 'D', r

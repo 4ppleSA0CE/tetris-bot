@@ -59,7 +59,7 @@ void usage() {
                  "                  [--depth N] [--width N] [--budget MS] [--nodes N] [--heights]\n"
                  "                  [--weights name=value,...] [--garbage L/P] [--messiness F]\n"
                  "       tetris_bot --random [--seed N] [--pieces N] [--print] [--stats]\n"
-                 "       tetris_bot --versus \"name=value,...\" [--seed N] [--seed2 M] [--json]\n"
+                 "       tetris_bot --versus \"name=value,...\" [--seed N] [--seed2 M] [--nodes2 K] [--json]\n"
                  "       tetris_bot --movegen <fixture|all>\n"
                  "       tetris_bot --movegen-bench [iters]\n"
                  "\n"
@@ -547,6 +547,7 @@ int main(int argc, char** argv) {
     uint32_t seed   = 1;
     uint32_t seed2  = 0;
     bool     seed2Set = false;
+    long     nodes2 = 0;
     const char* versusSpec = nullptr;
     int      pieces = 100;
     bool     stats = false, print = false, heights = false, randomMode = false, json = false;
@@ -595,6 +596,8 @@ int main(int argc, char** argv) {
             garbageEvery = static_cast<int>(parseIntArg("--garbage pieces", slash + 1, 1, 2147483647L));
         }
         else if (!std::strcmp(a, "--versus"))  versusSpec = need("--versus");
+        else if (!std::strcmp(a, "--nodes2"))
+            nodes2 = parseIntArg("--nodes2", need("--nodes2"), 1, 100000000L);
         else if (!std::strcmp(a, "--seed2")) {
             seed2 = static_cast<uint32_t>(parseIntArg("--seed2", need("--seed2"), 0, 4294967295L));
             seed2Set = true;
@@ -622,6 +625,7 @@ int main(int argc, char** argv) {
         tb::SearchConfig cfgB = cfg;
         cfgB.weights = tb::defaultWeights();   // B starts clean; --weights only shapes A
         if (versusSpec[0] != '\0' && !applyWeightSpec(cfgB.weights, versusSpec)) return 2;
+        if (nodes2 > 0) { cfgB.nodeBudget = nodes2; cfgB.timeBudgetMs = 1000000000.0f; }
         return runVersusMode(seed, seed2Set ? seed2 : seed + 7777u, pieces,
                              cfg, cfgB, messiness, stats || !json, json);
     }
