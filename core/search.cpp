@@ -276,8 +276,14 @@ SearchResult search(const Board& b, PieceType current, PieceType hold,
                         if (dominated) continue;
                     }
 
+                    // T availability for the cutout eval: Ts still visible to this
+                    // path (queue remainder + hold). Capped at 2 inside evaluate().
+                    int tAvail = (newHold == PIECE_T) ? 1 : 0;
+                    for (int q = newQueueIdx; q < seqLen; ++q) {
+                        if (seq[q] == PIECE_T && ++tAvail >= 2) break;
+                    }
                     float terminal = evaluate(child.board, cfg.weights, child.b2bCount,
-                                              (int)child.remaining);
+                                              (int)child.remaining, tAvail);
                     if (aboveField(child.board)) terminal += TOPOUT_PENALTY;
                     child.score = child.pathReward + terminal;
 
