@@ -12,6 +12,7 @@ interface EmbindModule {
   getSnapshotSize(): number;
   getSnapshotAlign(): number;
   botReset(_0: number, _1: number): boolean;
+  botQueueGarbage(_0: number, _1: number): boolean;
   botDestroy(_0: number): boolean;
   botLiveCount(): number;
   botSnapshotPtr(_0: number): number;
