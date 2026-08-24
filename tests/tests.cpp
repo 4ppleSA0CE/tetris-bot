@@ -2270,6 +2270,35 @@ static void test_search_wasted_t() {
     assert(r.useHold);
 }
 
+static void test_search_node_budget() {
+    // A node budget cuts the search off deterministically: two runs agree exactly, the count
+    // never exceeds the budget by more than one clock-check interval, and depth 0 always
+    // completes even when the budget is tiny.
+    tb::Board b{};
+    for (int y = 0; y < 3; ++y) b.rows[y] = (uint16_t)(tb::FULL_ROW & ~(1u << (y + 2)));
+    tb::PieceType queue[tb::PREVIEW_LEN] = {
+        tb::PIECE_L, tb::PIECE_S, tb::PIECE_I, tb::PIECE_Z, tb::PIECE_J
+    };
+    tb::SearchConfig cfg;
+    cfg.timeBudgetMs = 1e9f;
+    cfg.nodeBudget   = 1500;
+    tb::SearchResult a = tb::search(b, tb::PIECE_T, tb::PIECE_O, queue, tb::PREVIEW_LEN, 0, 0, cfg);
+    tb::SearchResult c = tb::search(b, tb::PIECE_T, tb::PIECE_O, queue, tb::PREVIEW_LEN, 0, 0, cfg);
+    assert(a.valid && c.valid);
+    assert(a.nodes == c.nodes);
+    assert(a.nodes >= 1500 && a.nodes < 1500 + 64);
+    assert(a.placement.x == c.placement.x && a.placement.y == c.placement.y &&
+           a.placement.rot == c.placement.rot && a.useHold == c.useHold);
+    // unlimited: more nodes, and the count is reported
+    cfg.nodeBudget = 0;
+    tb::SearchResult u = tb::search(b, tb::PIECE_T, tb::PIECE_O, queue, tb::PREVIEW_LEN, 0, 0, cfg);
+    assert(u.nodes > a.nodes);
+    // a budget below the root sweep still returns the complete root level
+    cfg.nodeBudget = 1;
+    tb::SearchResult r = tb::search(b, tb::PIECE_T, tb::PIECE_O, queue, tb::PREVIEW_LEN, 0, 0, cfg);
+    assert(r.valid && r.nodes > 1);
+}
+
 static void test_search_topout_semantics() {
     tb::SearchConfig cfg;
     cfg.timeBudgetMs = 1e9f;   // deterministic
@@ -3089,6 +3118,7 @@ int main() {
     RUN(test_search_prefers_hold_when_better);
     RUN(test_search_plain_clear_penalty);
     RUN(test_search_wasted_t);
+    RUN(test_search_node_budget);
     RUN(test_search_topout_semantics);
     RUN(test_search_time_budget);
     RUN(test_game_steps);

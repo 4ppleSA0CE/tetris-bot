@@ -68,13 +68,15 @@ SearchResult search(const Board& b, PieceType current, PieceType hold,
                     int b2bCount, int comboCount, const SearchConfig& cfg)
 {
     const auto t0 = std::chrono::steady_clock::now();
-    const double budgetMs = (double)cfg.timeBudgetMs;
+    const double budgetMs   = (double)cfg.timeBudgetMs;
+    const long   nodeBudget = cfg.nodeBudget;
 
     SearchResult res;
     res.placement = Placement{};
     res.useHold   = false;
     res.score     = 0.0f;
     res.valid     = false;
+    res.nodes     = 0;
 
     Scratch& S = g_scratch;
 
@@ -118,7 +120,7 @@ SearchResult search(const Board& b, PieceType current, PieceType hold,
 
     for (int d = 0; d < depth && !outOfTime; ++d) {
         // CLOCK CHECK 1 of 2: depth boundary. Depth 0 is never skipped.
-        if (d > 0 && elapsedMs(t0) > budgetMs) break;
+        if (d > 0 && (elapsedMs(t0) > budgetMs || (nodeBudget > 0 && scored >= nodeBudget))) break;
 
         int nextCount = 0;
         levelBest = 0.0f;
@@ -220,7 +222,8 @@ SearchResult search(const Board& b, PieceType current, PieceType hold,
                     // tops the bot out. A complete root sweep costs ~2 generateMoves
                     // plus <=256 feature extractions - about 0.15 ms against a 4.8 ms
                     // budget - so finishing it is affordable even when already over.
-                    if (d > 0 && (scored & CLOCK_CHECK_MASK) == 0 && elapsedMs(t0) > budgetMs) {
+                    if (d > 0 && (scored & CLOCK_CHECK_MASK) == 0 &&
+                        (elapsedMs(t0) > budgetMs || (nodeBudget > 0 && scored >= nodeBudget))) {
                         outOfTime = true;
                         break;
                     }
@@ -244,6 +247,7 @@ SearchResult search(const Board& b, PieceType current, PieceType hold,
         discount *= cfg.gamma;
     }
 
+    res.nodes = scored;
     if (bestRoot < 0) return res;    // genuinely no legal placement: valid stays false
 
     res.placement = S.roots[bestRoot].placement;

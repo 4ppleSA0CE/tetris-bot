@@ -56,7 +56,7 @@ void usage() {
     std::fprintf(stderr,
                  "usage: tetris_bot [--seed N] [--pieces N] [--stats] [--json] [--print]\n"
                  "                  [--list-weights]\n"
-                 "                  [--depth N] [--width N] [--budget MS] [--heights]\n"
+                 "                  [--depth N] [--width N] [--budget MS] [--nodes N] [--heights]\n"
                  "                  [--weights name=value,...] [--garbage L/P] [--messiness F]\n"
                  "       tetris_bot --random [--seed N] [--pieces N] [--print] [--stats]\n"
                  "       tetris_bot --movegen <fixture|all>\n"
@@ -518,6 +518,11 @@ int main(int argc, char** argv) {
             cfg.beamWidth = static_cast<int>(parseIntArg("--width", need("--width"), 1, 2147483647L));
         else if (!std::strcmp(a, "--budget"))
             cfg.timeBudgetMs = parsePositiveFloatArg("--budget", need("--budget"));
+        else if (!std::strcmp(a, "--nodes")) {
+            // Deterministic horizon: N scored children per search, clock effectively off.
+            cfg.nodeBudget   = parseIntArg("--nodes", need("--nodes"), 1, 2147483647L);
+            cfg.timeBudgetMs = 1e9f;
+        }
         else if (!std::strcmp(a, "--weights")) { if (!applyWeightSpec(cfg.weights, need("--weights"))) return 2; }
         else if (!std::strcmp(a, "--stats"))   stats = true;
         else if (!std::strcmp(a, "--json"))    json = true;
@@ -560,6 +565,7 @@ int main(int argc, char** argv) {
 
     std::vector<float> times;
     times.reserve(static_cast<size_t>(pieces));
+    double nodeSum = 0.0;
 
     uint32_t topOuts = 0;
     uint32_t basePieces = 0, baseLines = 0, baseAttack = 0, baseTspins = 0, baseSurge = 0;
@@ -576,6 +582,7 @@ int main(int argc, char** argv) {
         game.stepPiece();
         if (game.piecesPlaced() != before) {
             times.push_back(game.lastSearchMs());
+            nodeSum += static_cast<double>(game.lastSearchNodes());
             if (game.maxB2b() > maxB2b) maxB2b = game.maxB2b();
             int h = 0;
             for (int c = 0; c < tb::BOARD_W; ++c) {
@@ -633,6 +640,7 @@ int main(int argc, char** argv) {
         if (garbageEvery > 0) std::printf("%-12s%5u\n", "garbage", totalGarbage);
         std::printf("%-12s%5u\n", "top-outs", topOuts);
         std::printf("%-12sp50 %.1f  p99 %.1f\n", "search ms", pct(0.50), pct(0.99));
+        std::printf("%-12s%5.0f   per piece\n", "nodes", hN > 0.0 ? nodeSum / hN : 0.0);
     }
 
     if (heights) {
@@ -646,10 +654,10 @@ int main(int argc, char** argv) {
     if (json) {
         std::printf("{\"pieces\":%u,\"lines\":%u,\"attack\":%u,\"spins\":%u,\"maxB2b\":%u,"
                     "\"surge\":%u,\"topouts\":%u,\"garbage\":%u,\"p50\":%.3f,\"p99\":%.3f,"
-                    "\"avgHeight\":%.3f,\"maxHeight\":%d}\n",
+                    "\"avgHeight\":%.3f,\"maxHeight\":%d,\"nodes\":%.0f}\n",
                     totalPieces, totalLines, totalAttack, totalTspins,
                     static_cast<unsigned>(maxB2b), totalSurge, topOuts, totalGarbage,
-                    pct(0.50), pct(0.99), hAvg, hMax);
+                    pct(0.50), pct(0.99), hAvg, hMax, hN > 0.0 ? nodeSum / hN : 0.0);
     }
     return 0;
 }

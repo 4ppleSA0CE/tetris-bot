@@ -51,6 +51,7 @@ public:
     uint16_t         maxB2b()        const { return maxB2b_; }
     uint32_t         tSpinCount()    const { return tSpinCount_; }
     float            lastSearchMs()  const { return lastSearchMs_; }
+    long             lastSearchNodes() const { return lastSearchNodes_; }
     PieceType        currentPiece()  const { return current_; }
     PieceType        holdPiece()     const { return hold_; }
     const PieceType* queue()         const { return queue_; }   // PREVIEW_LEN entries
@@ -83,6 +84,7 @@ private:
     uint16_t     comboCount_;
     uint16_t     maxB2b_;
     float        lastSearchMs_;
+    long         lastSearchNodes_ = 0;
     GameEvent    events_[MAX_GAME_EVENTS];
     int          eventCount_;
     int          pendingGarbage_;

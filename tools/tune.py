@@ -4,7 +4,7 @@
 Every candidate in a generation plays the same seeds (common random numbers), redrawn each
 generation, in two regimes: solo and under --garbage. Fitness is lexicographic: fewer top-outs
 first, then more attack. attackDealt stays pinned at its default (the unit anchor). The search
-always runs at the shipped time budget; never pass --budget here.
+runs at the shipped time budget, or at --nodes N, a deterministic node count calibrated to it.
 
   python3 tools/tune.py --gens 30 --pop 60 --elite 8 --pieces 1500 --workers 8
 """
@@ -20,10 +20,12 @@ def list_weights():
     return {k: float(v) for k, v in (l.split('=') for l in out.split())}
 
 
-def run(weights, seed, pieces, garbage):
+def run(weights, seed, pieces, garbage, nodes=0):
     cmd = [BIN, '--json', '--seed', str(seed), '--pieces', str(pieces), '--weights', weights]
     if garbage:
         cmd += ['--garbage', garbage]
+    if nodes:
+        cmd += ['--nodes', str(nodes)]
     out = subprocess.run(cmd, capture_output=True, text=True, check=True).stdout
     return json.loads(out.strip().splitlines()[-1])
 
@@ -40,6 +42,9 @@ def main():
     ap.add_argument('--pieces', type=int, default=1500)
     ap.add_argument('--garbage', default='4/16')
     ap.add_argument('--workers', type=int, default=8)
+    ap.add_argument('--nodes', type=int, default=0,
+                    help='deterministic node budget per search, calibrated to the shipped 4.5 ms '
+                         '(read "nodes" from a sequential --json run); 0 = wall clock')
     ap.add_argument('--seed0', type=int, default=20000)
     ap.add_argument('--sigma-scale', type=float, default=0.5, help='initial sigma = max(scale*|w|, 5)')
     ap.add_argument('--noise', type=float, default=0.05, help='constant variance floor: (noise*sigma0)^2')
@@ -68,7 +73,7 @@ def main():
 
         def job(ir):
             i, r = ir
-            return run(fmt(names, pop[i]), seeds[r], a.pieces, a.garbage if r else '')
+            return run(fmt(names, pop[i]), seeds[r], a.pieces, a.garbage if r else '', a.nodes)
 
         with ThreadPoolExecutor(max_workers=a.workers) as ex:
             res = list(ex.map(job, jobs))

@@ -10,8 +10,10 @@ from concurrent.futures import ThreadPoolExecutor
 BIN = './build/tetris_bot'
 
 
-def run(weights, seed, pieces, garbage, extra=()):
-    cmd = [BIN, '--json', '--seed', str(seed), '--pieces', str(pieces), *extra]
+def run(weights, seed, pieces, garbage, nodes=0):
+    cmd = [BIN, '--json', '--seed', str(seed), '--pieces', str(pieces)]
+    if nodes:
+        cmd += ['--nodes', str(nodes)]
     if weights:
         cmd += ['--weights', weights]
     if garbage:
@@ -38,6 +40,7 @@ def main():
     ap.add_argument('--pieces', type=int, default=3000)
     ap.add_argument('--garbage', default='')
     ap.add_argument('--workers', type=int, default=1, help='>1 shares cores; the anytime clock gets noisier')
+    ap.add_argument('--nodes', type=int, default=0, help='deterministic node budget instead of the clock')
     a = ap.parse_args()
 
     seeds = list(range(a.seed0, a.seed0 + a.seeds))
@@ -46,14 +49,14 @@ def main():
         jobs += [('base', s) for s in seeds]
     with ThreadPoolExecutor(max_workers=a.workers) as ex:
         res = dict(zip(jobs, ex.map(
-            lambda j: run(a.weights if j[0] == 'cand' else a.baseline, j[1], a.pieces, a.garbage), jobs)))
+            lambda j: run(a.weights if j[0] == 'cand' else a.baseline, j[1], a.pieces, a.garbage, a.nodes), jobs)))
 
-    print(f"{'seed':>6} {'app':>7} {'topout':>6} {'spin%':>6} {'b2b':>4} {'height':>6} {'p99':>5}"
+    print(f"{'seed':>6} {'app':>7} {'topout':>6} {'spin%':>6} {'b2b':>4} {'height':>6} {'p99':>5} {'nodes':>6}"
           + ('   |  base app  diff' if a.baseline is not None else ''))
     for s in seeds:
         c = res[('cand', s)]
         line = (f"{s:>6} {c['attack']/c['pieces']:7.4f} {c['topouts']:6d} "
-                f"{100*c['spins']/c['pieces']:6.2f} {c['maxB2b']:4d} {c['avgHeight']:6.2f} {c['p99']:5.2f}")
+                f"{100*c['spins']/c['pieces']:6.2f} {c['maxB2b']:4d} {c['avgHeight']:6.2f} {c['p99']:5.2f} {c['nodes']:6.0f}")
         if a.baseline is not None:
             b = res[('base', s)]
             line += f"   | {b['attack']/b['pieces']:9.4f} {c['attack']/c['pieces']-b['attack']/b['pieces']:+6.4f}"

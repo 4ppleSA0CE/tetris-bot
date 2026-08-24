@@ -16,6 +16,10 @@ struct SearchConfig {
     // rather than by being slow. Aiming 0.2 ms low absorbs the overshoot so real
     // completion time lands under the limit.
     float timeBudgetMs = 4.5f;
+    // Deterministic stand-in for the clock: stop after this many scored children (0 = off).
+    // Same horizon as the time budget when calibrated to it, but identical on every run and
+    // on every core, which is what tools/tune.py needs. Shipped play never sets it.
+    long  nodeBudget   = 0;
     Weights weights  = defaultWeights();
 };
 
@@ -24,6 +28,7 @@ struct SearchResult {
     bool      useHold;    // true => swap hold before applying `placement`
     float     score;
     bool      valid;      // false only if no legal placement exists (top-out)
+    long      nodes;      // children scored before the answer was returned
 };
 
 // Beam search over the preview queue with hold branching (PRD 4.5).
