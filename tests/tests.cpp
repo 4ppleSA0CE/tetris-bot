@@ -821,7 +821,6 @@ static void test_attack_prd_table_without_b2b_or_combo() {
     assert(tb::computeAttack(ci(2, tb::SPIN_NONE, false), false, 0) == 1);   // double
     assert(tb::computeAttack(ci(3, tb::SPIN_NONE, false), false, 0) == 2);   // triple
     assert(tb::computeAttack(ci(4, tb::SPIN_NONE, false), false, 0) == 4);   // tetris
-    // TETR.IO multiplayer table: a mini pays 0/1/2/4, a full spin 2/4/6/10.
     assert(tb::computeAttack(ci(1, tb::SPIN_MINI, false), false, 0) == 0);   // mini single
     assert(tb::computeAttack(ci(2, tb::SPIN_MINI, false), false, 0) == 1);   // mini double
     assert(tb::computeAttack(ci(3, tb::SPIN_MINI, false), false, 0) == 2);   // mini triple
@@ -878,26 +877,21 @@ static void test_b2b_is_maintained_by_a_mini_that_clears_lines() {
     assert(!tb::b2bMaintaining(ci(0, tb::SPIN_MINI, false)));
 }
 
-// TETR.IO "Multiplier" combo. With c = consecutive PRIOR clears (0 for the first):
-//     g = (base + b2b) * (1 + 0.25c);  if c >= 2, g = max(g, ln(1 + 1.25c));  round down.
-// Expected values below are the formula worked by hand, not read back from the code.
+// g = (base + b2b) * (1 + 0.25c), c = prior consecutive clears; c >= 2: at least ln(1 + 1.25c);
+// rounded down. Expected values worked by hand from the formula.
 static void test_attack_combo_multiplier() {
-    // double (base 1): 1, 1.25, 1.5, 1.75, 2, 2.25, 2.5, 2.75, 3 ... 4 at c=12, 6 at c=20
     const int dbl[13] = {1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 4};
     for (int c = 0; c < 13; ++c) {
         assert(tb::computeAttack(ci(2, tb::SPIN_NONE, false), false, c) == dbl[c]);
     }
     assert(tb::computeAttack(ci(2, tb::SPIN_NONE, false), false, 20) == 6);
-    // quad (base 4): 4 * 1.25 = 5 at c=1; TSD with b2b (5) * 1.75 = 8.75 -> 8 at c=3
     assert(tb::computeAttack(ci(4, tb::SPIN_NONE, false), false, 1) == 5);
-    assert(tb::computeAttack(ci(2, tb::SPIN_FULL, false), true, 3) == 8);
+    assert(tb::computeAttack(ci(2, tb::SPIN_FULL, false), true, 3) == 8);    // (4+1)*1.75
     assert(tb::computeAttack(ci(2, tb::SPIN_FULL, false), true, 4) == 10);
-    // negative combo counts are treated as 0
     assert(tb::computeAttack(ci(2, tb::SPIN_NONE, false), false, -1) == 1);
 }
 
-// A base-0 clear (single, mini single) is lifted by the log floor from the third clear
-// of a combo on: ln(3.5)=1.25 -> 1 at c=2, ln(8.5)=2.14 -> 2 at c=6, ln(21)=3.04 -> 3 at c=16.
+// ln(3.5)=1.25 -> 1 at c=2, ln(8.5)=2.14 -> 2 at c=6, ln(21)=3.04 -> 3 at c=16.
 static void test_attack_combo_log_floor_for_zero_base() {
     assert(tb::computeAttack(ci(1, tb::SPIN_NONE, false), false, 0) == 0);
     assert(tb::computeAttack(ci(1, tb::SPIN_NONE, false), false, 1) == 0);
@@ -909,19 +903,16 @@ static void test_attack_combo_log_floor_for_zero_base() {
     assert(tb::computeAttack(ci(1, tb::SPIN_MINI, false), false, 2) == 1);
 }
 
-// The multiplier never clamps: a double at c=50 is 1 * 13.5 -> 13.
 static void test_attack_combo_multiplier_is_unbounded() {
     assert(tb::computeAttack(ci(2, tb::SPIN_NONE, false), false, 50) == 13);
     assert(tb::computeAttack(ci(4, tb::SPIN_NONE, false), false, 100) == 104);
 }
 
-// TETR.IO Season 2: an All Clear sends 5 flat (was 10), added after rounding, and it
-// counts as a difficult clear - a double that empties the board keeps the chain and
-// takes the +1 when the chain was already live.
+// All Clear: +5 flat after rounding, and it is a difficult clear.
 static void test_attack_all_clear_adds_five_and_holds_b2b() {
     assert(tb::computeAttack(ci(4, tb::SPIN_NONE, true), false, 0) == 9);
     assert(tb::computeAttack(ci(1, tb::SPIN_NONE, true), false, 0) == 5);
-    assert(tb::computeAttack(ci(2, tb::SPIN_NONE, true), true, 0) == 1 + 1 + 5);    // b2b applies
+    assert(tb::computeAttack(ci(2, tb::SPIN_NONE, true), true, 0) == 1 + 1 + 5);
     assert(tb::computeAttack(ci(4, tb::SPIN_NONE, true), true, 5) == 11 + 5);       // (4+1)*2.25 = 11.25
     assert(tb::b2bMaintaining(ci(1, tb::SPIN_NONE, true)));
     assert(tb::b2bMaintaining(ci(2, tb::SPIN_NONE, true)));
@@ -2608,16 +2599,8 @@ static void test_game_bot_instance_parity() {
     assert(matched >= 200);
 }
 
-// ---------------------------------------------------------------------------
-// All-mini+ (TETR.IO Beta 1.5.0+). Every piece other than T scores a MINI when it is
-// immobile after a rotation - I and O included, and never a FULL. T keeps the corner
-// rule for FULL/MINI, and falls back to the immobile rule for a MINI when it has fewer
-// than three corners.
-// ---------------------------------------------------------------------------
 static void test_all_spin_immobile() {
     using namespace tb;
-    // Box a piece in completely: fill the bottom rows except the exact four cells
-    // the piece occupies, so it cannot step left, right, up or down.
     auto boxed = [](PieceType p, Rot r, int x, int y) {
         Board b{};
         for (int row = 0; row < 6; ++row) b.rows[row] = FULL_ROW;
@@ -2633,35 +2616,31 @@ static void test_all_spin_immobile() {
     const PieceType spinners[6] = { PIECE_I, PIECE_J, PIECE_L, PIECE_O, PIECE_S, PIECE_Z };
     for (PieceType p : spinners) {
         Board b = boxed(p, ROT_0, 3, 1);
-        assert(!collides(b, p, ROT_0, 3, 1));            // the hole really fits it
+        assert(!collides(b, p, ROT_0, 3, 1));
         assert(isImmobile(b, p, ROT_0, 3, 1));
         assert(classifySpin(b, p, ROT_0, 3, 1, true, 0) == SPIN_MINI);
-        // A spin requires the last action to have been a rotation.
         assert(classifySpin(b, p, ROT_0, 3, 1, false, 0) == SPIN_NONE);
     }
 
-    // Room to move is not a spin.
     Board empty{};
     assert(!isImmobile(empty, PIECE_S, ROT_0, 3, 1));
     assert(classifySpin(empty, PIECE_S, ROT_0, 3, 1, true, 0) == SPIN_NONE);
 
-    // T still routes to its own rule first: boxed in, all four corners are filled and
-    // both front corners too, so this is a FULL spin, not the immobile MINI.
+    // Boxed in, T has all four corners: FULL by its own rule, not the immobile MINI.
     Board tb_ = boxed(PIECE_T, ROT_0, 3, 1);
     assert(classifySpin(tb_, PIECE_T, ROT_0, 3, 1, true, 0) == SPIN_FULL);
     assert(classifySpin(tb_, PIECE_T, ROT_0, 3, 1, true, 0)
            == classifyTSpin(tb_, ROT_0, 3, 1, true, 0));
 
-    // T with only two corners (the floor pair) in a 3x2 cavity: nothing without an
-    // overhang; with one it is immobile and all-mini+ awards a MINI.
+    // Two corners only (the floor pair): nothing until an overhang makes it immobile.
     const char* cavity[] = {
-        "....#.....",   // y = 2: an overhang over the nub
-        "###...####",   // y = 1
-        "###...####",   // y = 0
+        "....#.....",
+        "###...####",
+        "###...####",
     };
     Board cav = boardFromAscii(cavity, 3);
-    cav.rows[2] = 0;                                        // no overhang yet
-    assert(!collides(cav, PIECE_T, ROT_0, 3, -1));          // nub at (4,1), stem on the floor
+    cav.rows[2] = 0;
+    assert(!collides(cav, PIECE_T, ROT_0, 3, -1));
     assert(classifyTSpin(cav, ROT_0, 3, -1, true, 0) == SPIN_NONE);
     assert(classifySpin(cav, PIECE_T, ROT_0, 3, -1, true, 0) == SPIN_NONE);
     cav = boardFromAscii(cavity, 3);
@@ -2671,11 +2650,8 @@ static void test_all_spin_immobile() {
     assert(classifySpin(cav, PIECE_T, ROT_0, 3, -1, false, 0) == SPIN_NONE);
 }
 
-// TETR.IO all-mini+: "immobile" means the piece cannot move left, right, UP or down.
-// Sit any piece in a rectangular cavity exactly its bounding box wide and tall, sky
-// open: walled left and right, on the floor, but free to rise - NOT immobile. One
-// filled cell over any of its top cells pins it. (howtotetris diagram 16-2: the J-spin
-// single that "is not given back-to-backs in TETR.IO".)
+// A piece in a rectangular cavity its own size, sky open, can rise: not immobile until
+// one cell caps it. (howtotetris diagram 16-2: the J-spin single TETR.IO does not count.)
 static void test_immobile_requires_an_overhang() {
     using namespace tb;
     for (int pi = 0; pi < NUM_PIECES; ++pi) {
@@ -2688,8 +2664,6 @@ static void test_immobile_requires_an_overhang() {
             if (cs[i].dy < y0) y0 = cs[i].dy;
             if (cs[i].dy > y1) y1 = cs[i].dy;
         }
-        // Origin (3, -y0): the piece's lowest cells sit on the floor. Carve its box out
-        // of otherwise full rows.
         const int ox = 3, oy = -y0;
         Board b{};
         for (int row = 0; row <= y1 - y0; ++row) {
@@ -2700,18 +2674,16 @@ static void test_immobile_requires_an_overhang() {
         assert(!collides(b, p, ROT_0, ox, oy));
         assert(collides(b, p, ROT_0, ox - 1, oy) && collides(b, p, ROT_0, ox + 1, oy));
         assert(collides(b, p, ROT_0, ox, oy - 1));
-        assert(!isImmobile(b, p, ROT_0, ox, oy));          // free to rise
+        assert(!isImmobile(b, p, ROT_0, ox, oy));
 
-        b.rows[y1 - y0 + 1] = static_cast<uint16_t>(1u << (ox + x0));   // any top cell will do
         for (int i = 0; i < 4; ++i) {
             if (cs[i].dy == y1) { b.rows[y1 - y0 + 1] = static_cast<uint16_t>(1u << (ox + cs[i].dx)); break; }
         }
-        assert(isImmobile(b, p, ROT_0, ox, oy));           // pinned
+        assert(isImmobile(b, p, ROT_0, ox, oy));
     }
 
-    // The canonical S-spin notch has open sky and still pins the piece: rising one row
-    // drives its top cells into the stack beside the notch. This is why the basic
-    // S/Z-spin setup on the TETR.IO wiki needs no overhang.
+    // The canonical S-spin notch has open sky and still pins the piece: rising drives its
+    // top cells into the stack beside the notch. That is why the basic setup needs no overhang.
     const char* notch[] = {
         "##..######",   // y = 1
         "#..#######",   // y = 0

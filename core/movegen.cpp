@@ -22,12 +22,8 @@ bool mgCellOccupied(const Board& b, int x, int y) {
     return ((b.rows[y] >> x) & 1u) != 0u;
 }
 
-// A piece with nowhere left to go: it cannot step left, right, up or down from where
-// it came to rest. This is TETR.IO's all-mini+ "immobile" rule, and it is intentionally
-// shape-agnostic - there is no per-piece corner table for the non-T pieces the way
-// there is for T. The UP check is the one that does the work: a piece at rest in a
-// slot is already pinned left, right and down whenever a line is about to clear, so
-// without an overhang every snug landing would read as a spin.
+// TETR.IO all-mini+ immobility. The up check is the discriminating one: a piece at rest
+// in a slot is already pinned left, right and down whenever a line is about to clear.
 bool isImmobile(const Board& b, PieceType p, Rot r, int x, int y) {
     return collides(b, p, r, x - 1, y)
         && collides(b, p, r, x + 1, y)
@@ -63,9 +59,7 @@ SpinKind classifyTSpin(const Board& b, Rot r, int x, int y,
         if (filled[i]) ++occupied;
     }
 
-    // 2. Fewer than three corners is not a T-spin. All-mini+ (TETR.IO Beta 1.5.0)
-    //    still awards a MINI if the T is immobile, the same test every other piece
-    //    gets; otherwise it is nothing.
+    // 2. Below three corners all-mini+ still awards a MINI if the T is immobile.
     if (occupied < 3) return isImmobile(b, PIECE_T, r, x, y) ? SPIN_MINI : SPIN_NONE;
 
     // 3. Both front corners -> proper T-spin. (With occupied >= 3, front is
@@ -84,16 +78,9 @@ SpinKind classifyTSpin(const Board& b, Rot r, int x, int y,
     return SPIN_MINI;
 }
 
-// All-mini+ classification (TETR.IO Beta 1.5.0+, the default in every multiplayer mode).
-//   T          -> the 3-corner + front-pair rule above for FULL vs MINI, with the
-//                 immobile rule as a MINI fallback below three corners. T is the only
-//                 piece that can ever be FULL.
-//   every other piece, I and O included
-//              -> immobile after a rotation is a MINI. Never FULL: TETR.IO pays a mini
-//                 0/1/2/4 for 1/2/3/4 lines, and it exists to keep back-to-back alive.
-// Every branch requires the last successful action to have been a rotation. O turns
-// in place, so any O locked under an overhang in a snug 2-wide slot is an O-spin -
-// rare in human play, legal in TETR.IO, and the BFS will find it.
+// All-mini+: T is the only piece that can be FULL; every other piece, I and O included,
+// is a MINI when immobile after a rotation. O turns in place, so a snug covered O is an
+// O-spin - rare in human play, legal in TETR.IO, and the BFS will find it.
 SpinKind classifySpin(const Board& b, PieceType p, Rot r, int x, int y,
                       bool lastWasRotation, uint8_t kickIndex) {
     if (p == PIECE_T) return classifyTSpin(b, r, x, y, lastWasRotation, kickIndex);
