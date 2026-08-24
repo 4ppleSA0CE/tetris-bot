@@ -22,7 +22,7 @@ bindings/    Snapshot struct, layout export, embind glue.
 dist/        Committed build output: bot.js (single-file WASM) + bot.d.ts.
 js/          TypeScript wrapper: createTetrisBot(), snapshot views, host behavior.
 renderers/   canvas-mono.ts — Canvas 2D, themed entirely by CSS custom properties.
-demo/        Standalone Vite page: board, stat line, callouts, PPS slider.
+demo/        Standalone Vite page: board, stat line, callouts, PPS slider. Fresh seed per load; ?seed=42 replays the README game.
 native/      CLI harness — runs the core natively, no browser.
 tests/       tests.cpp (C++, assert-based) + *.mjs (the web layer, plain node).
 ```
@@ -172,11 +172,11 @@ make                           # native CLI -> build/tetris_bot
 ./build/tetris_bot --seed 1 --pieces 10000 --stats
 ```
 
-`--stats` reports pieces, lines, attack (Surge included), spins per 100 pieces, max back-to-back, total Surge released, top-outs and search-time percentiles; `--heights` adds the stack-height profile.
+`--stats` reports pieces, lines, attack (Surge included), spins per 100 pieces, max back-to-back, total Surge released, top-outs and search-time percentiles; `--heights` adds the stack-height profile; `--json` prints the same as one machine-readable object. `--garbage L/P` queues L lines of TETR.IO-style garbage every P pieces (attack sent cancels it first, `--messiness` moves the hole column, default 0.05), which is how survival under pressure is measured. `--list-weights` prints every weight with its compiled default.
 
 ## Tuning weights
 
-Weights are hand-tuned against CLI statistics. The named constants live in `core/weights.h`, which documents what each value was measured against and what was rejected on either side of it; `defaultWeights()` in `core/eval.cpp` reads them. They are exported to JS by name via `getWeightsInfo()` and are overridable per instance:
+The named constants live in `core/weights.h`, which records what each vector was measured against; `defaultWeights()` in `core/eval.cpp` reads them. They are exported to JS by name via `getWeightsInfo()` and are overridable per instance:
 
 ```ts
 const bot = await createTetrisBot({ weights: { tSlotCount: 240, attackDealt: 140 } });
@@ -186,14 +186,25 @@ const bot = await createTetrisBot({ weights: { tSlotCount: 240, attackDealt: 140
 
 **`maxHeight` is positive, and that is deliberate.** It is the one weight whose sign departs from "board-health terms are negative", and it is the reason the bot stacks at all. With every health term negative, nothing in the evaluator ever rewards building: the measured result was a 2.7-row pancake with zero tetrises and a max back-to-back of 1, because clearing a single pays no attack yet still improves every negative term — the health weights were paying the bot to break its own chain. `maxHeight` is a bounded reward and `heightPenalty` is the cliff that bounds it, applied to `(height - 12)²`. **They are a matched pair and must be changed together:** raising the reward without the cliff stacks into the ceiling, raising the cliff without the reward pins the stack flat again.
 
-Two things worth knowing before you sweep anything:
+Besides the board terms above, four come from the versus-bot literature (Cold Clear, ZZZ, BCTS): `rowsWithHoles` (a second hole in a holed row is nearly free, a hole in a clean row costs the row), `overhangs` (a positive refund for holes a piece can still slide into from the side), and two per-move terms the search applies like `attackDealt`: `plainClear` (a clear that does not keep back-to-back) and `wastedT` (a T placed without a spin).
 
+Weights are tuned by `tools/tune.py`, a noisy cross-entropy loop: every candidate in a generation plays the same seeds (so candidates are compared, not seeds), once solo and once under `--garbage 4/16`; fitness is fewer top-outs first, then more attack; the elite refits the mean and variance. `tools/bench.py` is the gate: the same seeds for a candidate and a baseline, attack per piece with a 95% interval, paired difference, top-outs.
+
+```bash
+python3 tools/tune.py --gens 30 --pop 50 --elite 6 --pieces 1200 --workers 4
+python3 tools/bench.py --weights "wastedT=-120" --baseline "" --seeds 8 --pieces 3000
+python3 tools/bench.py --baseline "" --garbage 4/16      # survival under pressure
+```
+
+Things worth knowing before you touch anything:
+
+- **The score is noisy.** Attack per piece over a few thousand pieces has a coefficient of variation around 1 across seeds, and the anytime search adds wall-clock noise on top — two runs of the same weights differ. Never trust a single seed; read the interval `bench.py` prints.
 - **`holes` is the only weight keeping the bot alive.** Single-weight ablation: zero it and the run tops out at piece 107, while zeroing any *other* weight individually costs no survival at all. If the bot starts topping out, look here first.
-- **Tune at the shipped time budget, never at an unlimited one.** The search is anytime, and a taller stack needs deeper search to dig out of, so stack ambition and the 5 ms budget are in direct tension. A vector tuned with `--budget 1000000` met every target and then died 0 for 3 at the real budget.
+- **Tune at the shipped time budget, never at an unlimited one.** The search is anytime, and a taller stack needs deeper search to dig out of, so stack ambition and the 5 ms budget are in direct tension. A vector tuned with `--budget 1000000` met every target and then died 0 for 3 at the real budget. `tune.py` has no `--budget` flag on purpose.
 
 ## Non-goals
 
-No versus mode, no garbage, no second board, no human playability, no automated weight optimization, no perfect-clear finder, no threads, no `SharedArrayBuffer`.
+No versus mode, no second board, no human playability, no perfect-clear finder, no threads, no `SharedArrayBuffer`. Garbage exists only as CLI pressure for tuning; the web bot never receives any.
 
 ## License
 
