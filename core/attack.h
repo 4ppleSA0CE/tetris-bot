@@ -11,16 +11,9 @@ struct ClearInfo {
     bool     perfectClear;
 };
 
-// AMENDMENT to PRD section 4.7: back-to-back is maintained by ANY T-spin that
-// clears lines, mini OR full (guideline behavior), plus tetrises. It is broken
-// by any other line clear.
-//
-// Returns false for a zero-line placement. That is NOT the same as "breaks the
-// chain": a placement that clears nothing is neutral and the caller must leave
-// the flag untouched. The caller's rule is:
-//     if (lines == 0)              -> leave b2bActive alone
-//     else if (b2bMaintaining(c))  -> b2bActive = true
-//     else                         -> b2bActive = false
+// TETR.IO: a difficult clear is a quad, any spin (mini or full) that clears lines, or an
+// All Clear. Returns false for a zero-line placement, which is neutral, not a break -
+// the caller must leave the chain untouched in that case.
 bool b2bMaintaining(const ClearInfo& c);
 
 // Returns attack in garbage lines.
@@ -32,7 +25,7 @@ bool b2bMaintaining(const ClearInfo& c);
 // Plus 1 when the clear is b2bMaintaining AND b2bActive.
 // Then the TETR.IO multiplier combo with c = comboCount: x (1 + 0.25c), and for c >= 2
 // at least ln(1 + 1.25c); rounded down. Unbounded.
-// Plus 10 for a perfect clear. Always 0 when no lines cleared.
+// Plus 5 for an All Clear, after rounding. Always 0 when no lines cleared.
 int computeAttack(const ClearInfo& c, bool b2bActive, int comboCount);
 
 } // namespace tb

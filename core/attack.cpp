@@ -21,9 +21,8 @@ int baseAttack(const ClearInfo& c) {
 } // namespace
 
 bool b2bMaintaining(const ClearInfo& c) {
-    if (c.lines == 0) return false;              // neutral, not breaking
-    if (c.lines >= 4) return true;               // tetris
-    return c.spin != SPIN_NONE;                  // mini OR full -- amended rule
+    if (c.lines == 0) return false;
+    return c.lines >= 4 || c.spin != SPIN_NONE || c.perfectClear;
 }
 
 int computeAttack(const ClearInfo& c, bool b2bActive, int comboCount) {
@@ -39,7 +38,7 @@ int computeAttack(const ClearInfo& c, bool b2bActive, int comboCount) {
     if (combo >= 2) g = std::max(g, std::log1p(1.25 * combo));
 
     int attack = static_cast<int>(std::floor(g));   // TETR.IO "DOWN" rounding
-    if (c.perfectClear) attack += 10;
+    if (c.perfectClear) attack += 5;
     return attack;
 }
 

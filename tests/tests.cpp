@@ -915,11 +915,17 @@ static void test_attack_combo_multiplier_is_unbounded() {
     assert(tb::computeAttack(ci(4, tb::SPIN_NONE, false), false, 100) == 104);
 }
 
-static void test_attack_perfect_clear_adds_ten() {
-    assert(tb::computeAttack(ci(4, tb::SPIN_NONE, true), false, 0) == 14);
-    assert(tb::computeAttack(ci(1, tb::SPIN_NONE, true), false, 0) == 10);
-    // Stacks with the b2b bonus and the combo bonus.
-    assert(tb::computeAttack(ci(4, tb::SPIN_NONE, true), true, 5) == 11 + 10);   // (4+1)*2.25 = 11.25
+// TETR.IO Season 2: an All Clear sends 5 flat (was 10), added after rounding, and it
+// counts as a difficult clear - a double that empties the board keeps the chain and
+// takes the +1 when the chain was already live.
+static void test_attack_all_clear_adds_five_and_holds_b2b() {
+    assert(tb::computeAttack(ci(4, tb::SPIN_NONE, true), false, 0) == 9);
+    assert(tb::computeAttack(ci(1, tb::SPIN_NONE, true), false, 0) == 5);
+    assert(tb::computeAttack(ci(2, tb::SPIN_NONE, true), true, 0) == 1 + 1 + 5);    // b2b applies
+    assert(tb::computeAttack(ci(4, tb::SPIN_NONE, true), true, 5) == 11 + 5);       // (4+1)*2.25 = 11.25
+    assert(tb::b2bMaintaining(ci(1, tb::SPIN_NONE, true)));
+    assert(tb::b2bMaintaining(ci(2, tb::SPIN_NONE, true)));
+    assert(!tb::b2bMaintaining(ci(2, tb::SPIN_NONE, false)));
 }
 
 static void test_attack_is_zero_when_no_lines_clear() {
@@ -2805,7 +2811,7 @@ int main() {
     RUN(test_attack_combo_multiplier);
     RUN(test_attack_combo_log_floor_for_zero_base);
     RUN(test_attack_combo_multiplier_is_unbounded);
-    RUN(test_attack_perfect_clear_adds_ten);
+    RUN(test_attack_all_clear_adds_five_and_holds_b2b);
     RUN(test_attack_is_zero_when_no_lines_clear);
     RUN(test_mg_t_center_is_origin_plus_one_one);
     RUN(test_mg_cell_offsets_fit_zero_to_three);
