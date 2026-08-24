@@ -19,8 +19,8 @@ const VISIBLE_ROWS = 20;
 const BOARD_COLS = 10;
 /** Width of the hold/queue column, in cells. */
 const SIDE_CELLS = 4.5;
+const HOLD_CELLS = 3;
 /** Fraction of the demo layout's width reserved for that column. */
-const SIDE_FRACTION = 0.3;
 const HUD_HEIGHT = 22;
 const CELL_GAP = 1;
 const FONT_STACK = 'ui-monospace, SFMono-Regular, Menlo, monospace';
@@ -72,6 +72,7 @@ interface Geometry {
   wellW: number;
   wellH: number;
   sideX: number;
+  holdX: number;
   hudY: number;
   calloutX: number;
   calloutY: number;
@@ -111,14 +112,16 @@ function computeGeometry(
   const dpr = typeof devicePixelRatio === 'number' && devicePixelRatio > 0 ? devicePixelRatio : 1;
 
   const hudH = chrome === 'full' ? HUD_HEIGHT : 0;
-  const sideFrac = chrome === 'none' ? 0 : SIDE_FRACTION;
+  // demo: hold column left of the well, queue column right of it.
+  const holdCells = chrome === 'none' ? 0 : HOLD_CELLS;
+  const sideCells = chrome === 'none' ? 0 : SIDE_CELLS;
 
   // sidebar: PRD section 7.5 fixes cell size at viewport height / 22.
   const cell = layout === 'sidebar'
     ? Math.max(2, Math.floor(h / 22))
     : Math.max(2, Math.floor(Math.min(
         (h - hudH - 8) / VISIBLE_ROWS,
-        ((w - 8) * (1 - sideFrac)) / BOARD_COLS,
+        (w - 8) / (BOARD_COLS + holdCells + sideCells),
       )));
 
   const wellW = cell * BOARD_COLS;
@@ -127,6 +130,7 @@ function computeGeometry(
   let wellX: number;
   let wellY: number;
   let sideX: number;
+  let holdX: number;
   let calloutX: number;
   let calloutAlign: CanvasTextAlign;
 
@@ -134,19 +138,21 @@ function computeGeometry(
     wellX = w - wellW - 4;
     wellY = Math.round((h - wellH) / 2);
     sideX = wellX - cell * SIDE_CELLS;
+    holdX = sideX;
     calloutX = wellX - cell * 0.75;
     calloutAlign = 'right';
   } else {
-    const groupW = wellW + (sideFrac > 0 ? cell * SIDE_CELLS : 0);
-    wellX = Math.round((w - groupW) / 2);
+    const groupW = wellW + cell * (holdCells + sideCells);
+    wellX = Math.round((w - groupW) / 2) + cell * holdCells;
     wellY = Math.round((h - hudH - wellH) / 2);
     sideX = wellX + wellW + cell * 0.75;
+    holdX = wellX - cell * holdCells + cell * 0.25;
     calloutX = sideX;
     calloutAlign = 'left';
   }
 
   return {
-    dpr, w, h, cell, wellX, wellY, wellW, wellH, sideX,
+    dpr, w, h, cell, wellX, wellY, wellW, wellH, sideX, holdX,
     hudY: wellY + wellH + HUD_HEIGHT * 0.7,
     calloutX,
     calloutY: wellY + cell * 2,
@@ -253,7 +259,7 @@ function drawSide(
   ctx: CanvasRenderingContext2D, s: Snapshot, th: Theme, g: Geometry,
 ): void {
   const unit = Math.max(2, Math.round(g.cell * 0.55));
-  drawMiniPiece(ctx, th, s.holdPiece, g.sideX + unit, g.wellY + unit * 2, unit);
+  drawMiniPiece(ctx, th, s.holdPiece, g.holdX, g.wellY + unit * 2, unit);
   for (let i = 0; i < s.queue.length; i++) {
     drawMiniPiece(ctx, th, s.queue[i] ?? -1, g.sideX + unit, g.wellY + unit * (6 + i * 3), unit);
   }

@@ -28,12 +28,20 @@ assert.ok(outline, 'well outline was not stroked with --bot-grid');
 
 // The board is painted PER PIECE, not in one flat colour. The fake board is 9 I
 // cells on the bottom row and 2 Z cells above them; previews sit outside the well.
+const wellLeft = Math.floor(outline.args[0]);
 const wellRight = outline.args[0] + outline.args[2];
 const PIECE_VARS = ['--bot-piece-i', '--bot-piece-j', '--bot-piece-l', '--bot-piece-o',
                     '--bot-piece-s', '--bot-piece-t', '--bot-piece-z'].map((k) => TEST_VARS[k]);
 const pieceFills = ops.filter((o) => o.op === 'fillRect' && PIECE_VARS.includes(o.fillStyle));
-const insideWell = pieceFills.filter((o) => o.args[0] < wellRight);
-const previews = pieceFills.filter((o) => o.args[0] >= wellRight);
+const insideWell = pieceFills.filter((o) => o.args[0] >= wellLeft && o.args[0] < wellRight);
+const previews = pieceFills.filter((o) => o.args[0] < wellLeft || o.args[0] >= wellRight);
+// Demo layout: hold (the O, piece 3) sits LEFT of the well, the queue to its right.
+const holdCells = previews.filter((o) => o.fillStyle === TEST_VARS['--bot-piece-o']);
+assert.equal(holdCells.length, 4, 'hold O must paint 4 cells');
+assert.ok(holdCells.every((o) => o.args[0] + o.args[2] <= wellLeft),
+  `hold piece must sit left of the well (x ${holdCells.map((o) => o.args[0])}, wellLeft ${wellLeft})`);
+assert.ok(previews.filter((o) => o.fillStyle !== TEST_VARS['--bot-piece-o']).every((o) => o.args[0] >= wellRight),
+  'queue pieces must sit right of the well');
 const byColour = (c) => insideWell.filter((o) => o.fillStyle === c).length;
 
 assert.equal(byColour(TEST_VARS['--bot-piece-i']), 9, 'bottom row must paint 9 I cells');
