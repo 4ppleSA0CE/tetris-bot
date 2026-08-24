@@ -36,6 +36,7 @@ public:
     void     queueGarbage(int lines)        { pendingGarbage_ += lines; }
     void     setMessiness(float m)          { messiness_ = m; }
     uint32_t garbageReceived()        const { return garbageReceived_; }
+    int      pendingGarbage()         const { return pendingGarbage_; }
 
     bool         toppedOut()    const { return toppedOut_; }
     const Board& board()        const { return board_; }

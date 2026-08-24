@@ -59,6 +59,7 @@ void usage() {
                  "                  [--depth N] [--width N] [--budget MS] [--nodes N] [--heights]\n"
                  "                  [--weights name=value,...] [--garbage L/P] [--messiness F]\n"
                  "       tetris_bot --random [--seed N] [--pieces N] [--print] [--stats]\n"
+                 "       tetris_bot --versus \"name=value,...\" [--seed N] [--seed2 M] [--json]\n"
                  "       tetris_bot --movegen <fixture|all>\n"
                  "       tetris_bot --movegen-bench [iters]\n"
                  "\n"
@@ -370,6 +371,54 @@ bool applyWeightSpec(tb::Weights& w, const char* spec) {
     return true;
 }
 
+// --versus: two Games in one process, stepping alternately (equal PPS). Attack cancels the
+// sender's own pending queue first (inside Game); only the surplus is queued on the opponent,
+// entering after the opponent's next lock. First top-out loses; both alive at the cap = draw.
+static int runVersusMode(uint32_t seedA, uint32_t seedB, int maxPieces,
+                         const tb::SearchConfig& cfgA, const tb::SearchConfig& cfgB,
+                         float messiness, bool stats, bool json) {
+    tb::Game A(seedA, cfgA);
+    tb::Game B(seedB, cfgB);
+    A.setMessiness(messiness);
+    B.setMessiness(messiness);
+
+    const char* winner = "draw";
+    int rounds = 0;
+    while (rounds < maxPieces) {
+        ++rounds;
+        // A steps; its surplus attack (after cancelling its own queue) goes to B.
+        int pending = A.pendingGarbage();
+        uint32_t before = A.attackSent();
+        A.stepPiece();
+        if (A.toppedOut()) { winner = "B"; break; }
+        int atk = static_cast<int>(A.attackSent() - before);
+        B.queueGarbage(atk - (atk < pending ? atk : pending));
+
+        pending = B.pendingGarbage();
+        before = B.attackSent();
+        B.stepPiece();
+        if (B.toppedOut()) { winner = "A"; break; }
+        atk = static_cast<int>(B.attackSent() - before);
+        A.queueGarbage(atk - (atk < pending ? atk : pending));
+    }
+
+    if (stats) {
+        std::printf("%-12s%s\n", "winner", winner);
+        std::printf("%-12s%5d\n", "rounds", rounds);
+        std::printf("%-12s%5u vs %5u\n", "attack", A.attackSent(), B.attackSent());
+        std::printf("%-12s%5u vs %5u\n", "garbage", A.garbageReceived(), B.garbageReceived());
+        std::printf("%-12s%5u vs %5u\n", "max b2b", A.maxB2b(), B.maxB2b());
+    }
+    if (json) {
+        std::printf("{\"winner\":\"%s\",\"rounds\":%d,\"attackA\":%u,\"attackB\":%u,"
+                    "\"garbageA\":%u,\"garbageB\":%u,\"maxB2bA\":%u,\"maxB2bB\":%u}\n",
+                    winner, rounds, A.attackSent(), B.attackSent(),
+                    A.garbageReceived(), B.garbageReceived(),
+                    static_cast<unsigned>(A.maxB2b()), static_cast<unsigned>(B.maxB2b()));
+    }
+    return 0;
+}
+
 } // namespace
 
 // Plan 1's random-play harness, moved verbatim out of main() and otherwise untouched. It is the
@@ -496,6 +545,9 @@ int main(int argc, char** argv) {
     }
 
     uint32_t seed   = 1;
+    uint32_t seed2  = 0;
+    bool     seed2Set = false;
+    const char* versusSpec = nullptr;
     int      pieces = 100;
     bool     stats = false, print = false, heights = false, randomMode = false, json = false;
     int      garbageLines = 0, garbageEvery = 0;
@@ -541,6 +593,11 @@ int main(int argc, char** argv) {
             garbageLines = static_cast<int>(parseIntArg("--garbage lines", std::string(spec, slash).c_str(), 1, 20));
             garbageEvery = static_cast<int>(parseIntArg("--garbage pieces", slash + 1, 1, 2147483647L));
         }
+        else if (!std::strcmp(a, "--versus"))  versusSpec = need("--versus");
+        else if (!std::strcmp(a, "--seed2")) {
+            seed2 = static_cast<uint32_t>(parseIntArg("--seed2", need("--seed2"), 0, 4294967295L));
+            seed2Set = true;
+        }
         else if (!std::strcmp(a, "--messiness")) {
             messiness = parsePositiveFloatArg("--messiness", need("--messiness"));
             if (messiness > 1.0f) { std::fprintf(stderr, "--messiness must be <= 1\n"); return 2; }
@@ -559,6 +616,14 @@ int main(int argc, char** argv) {
 
     // PLAN 1'S MODE, still reachable and still meaning what it meant.
     if (randomMode) return runRandomMode(seed, pieces, print, stats);
+
+    if (versusSpec != nullptr) {
+        tb::SearchConfig cfgB = cfg;
+        cfgB.weights = tb::defaultWeights();   // B starts clean; --weights only shapes A
+        if (versusSpec[0] != '\0' && !applyWeightSpec(cfgB.weights, versusSpec)) return 2;
+        return runVersusMode(seed, seed2Set ? seed2 : seed + 7777u, pieces,
+                             cfg, cfgB, messiness, stats || !json, json);
+    }
 
     tb::Game game(seed, cfg);
     game.setMessiness(messiness);
