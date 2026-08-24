@@ -172,7 +172,7 @@ make                           # native CLI -> build/tetris_bot
 ./build/tetris_bot --seed 1 --pieces 10000 --stats
 ```
 
-`--stats` reports pieces, lines, attack (Surge included), spins per 100 pieces, max back-to-back, total Surge released, top-outs and search-time percentiles; `--heights` adds the stack-height profile; `--json` prints the same as one machine-readable object. `--garbage L/P` queues L lines of TETR.IO-style garbage every P pieces (attack sent cancels it first, `--messiness` moves the hole column, default 0.05), which is how survival under pressure is measured. `--list-weights` prints every weight with its compiled default.
+`--stats` reports pieces, lines, attack (Surge included), spins per 100 pieces, max back-to-back, total Surge released, top-outs and search-time percentiles; `--heights` adds the stack-height profile; `--json` prints the same as one machine-readable object. `--garbage L/P` queues L lines of TETR.IO-style garbage every P pieces (attack sent cancels it first, `--messiness` moves the hole column, default 0.05), which is how survival under pressure is measured. `--list-weights` prints every weight with its compiled default. `--nodes N` replaces the clock with a deterministic budget of N scored children per search (`--stats` prints the average the clock reaches, about 5,200 on an idle M4 performance core), so two runs of the same seed agree exactly and every core gives the same answer.
 
 ## Tuning weights
 
@@ -191,16 +191,18 @@ Besides the board terms above, four come from the versus-bot literature (Cold Cl
 Weights are tuned by `tools/tune.py`, a noisy cross-entropy loop: every candidate in a generation plays the same seeds (so candidates are compared, not seeds), once solo and once under `--garbage 4/16`; fitness is fewer top-outs first, then more attack; the elite refits the mean and variance. `tools/bench.py` is the gate: the same seeds for a candidate and a baseline, attack per piece with a 95% interval, paired difference, top-outs.
 
 ```bash
-python3 tools/tune.py --gens 30 --pop 50 --elite 6 --pieces 1200 --workers 4
+python3 tools/tune.py --gens 30 --pop 50 --elite 6 --pieces 1500 --workers 10 --nodes 5200
 python3 tools/bench.py --weights "wastedT=-120" --baseline "" --seeds 8 --pieces 3000
 python3 tools/bench.py --baseline "" --garbage 4/16      # survival under pressure
 ```
+
+Tune with `--nodes` (calibrated to the shipped budget) so common random numbers actually work and every core is usable; gate with `bench.py` on the wall clock, one process at a time, because the clock is what ships.
 
 Things worth knowing before you touch anything:
 
 - **The score is noisy.** Attack per piece over a few thousand pieces has a coefficient of variation around 1 across seeds, and the anytime search adds wall-clock noise on top — two runs of the same weights differ. Never trust a single seed; read the interval `bench.py` prints.
 - **`holes` is the only weight keeping the bot alive.** Single-weight ablation: zero it and the run tops out at piece 107, while zeroing any *other* weight individually costs no survival at all. If the bot starts topping out, look here first.
-- **Tune at the shipped time budget, never at an unlimited one.** The search is anytime, and a taller stack needs deeper search to dig out of, so stack ambition and the 5 ms budget are in direct tension. A vector tuned with `--budget 1000000` met every target and then died 0 for 3 at the real budget. `tune.py` has no `--budget` flag on purpose.
+- **Tune at the shipped time budget, never at an unlimited one.** The search is anytime, and a taller stack needs deeper search to dig out of, so stack ambition and the 5 ms budget are in direct tension. A vector tuned with `--budget 1000000` met every target and then died 0 for 3 at the real budget. `tune.py` has no `--budget` flag on purpose; `--nodes` is the same horizon without the jitter.
 
 ## Non-goals
 
