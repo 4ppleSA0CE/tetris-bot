@@ -30,6 +30,13 @@ public:
     void reset(uint32_t seed);
     void stepPiece();          // search + apply one placement, fires events
 
+    // Incoming garbage. Queued lines enter after the next lock, minus whatever attack that
+    // lock sends (TETR.IO cancelling). Each burst draws one hole column; every further row
+    // redraws it with probability `messiness` (TETR.IO's default 0.05). Deterministic per seed.
+    void     queueGarbage(int lines)        { pendingGarbage_ += lines; }
+    void     setMessiness(float m)          { messiness_ = m; }
+    uint32_t garbageReceived()        const { return garbageReceived_; }
+
     bool         toppedOut()    const { return toppedOut_; }
     const Board& board()        const { return board_; }
     uint32_t     piecesPlaced() const { return piecesPlaced_; }
@@ -78,6 +85,10 @@ private:
     float        lastSearchMs_;
     GameEvent    events_[MAX_GAME_EVENTS];
     int          eventCount_;
+    int          pendingGarbage_;
+    uint32_t     garbageReceived_;
+    uint32_t     garbageRng_;
+    float        messiness_ = 0.05f;
 };
 
 } // namespace tb

@@ -2383,6 +2383,61 @@ static void test_game_b2b_survives_non_clearing_pieces() {
     assert(easyBreaks > 0);
 }
 
+static int countBits(uint16_t r) {
+    int n = 0;
+    for (int x = 0; x < tb::BOARD_W; ++x) n += (r >> x) & 1;
+    return n;
+}
+
+static void test_game_garbage() {
+    tb::SearchConfig cfg;
+    cfg.timeBudgetMs = 1e9f;
+    tb::Game g(42u, cfg);
+    g.setMessiness(0.0f);
+    assert(g.garbageReceived() == 0u);
+
+    // Queued garbage enters after the next lock: two nine-cell rows sharing one hole.
+    g.queueGarbage(2);
+    g.stepPiece();
+    assert(g.garbageReceived() == 2u);
+    assert(countBits(g.board().rows[0]) == 9);
+    assert(g.board().rows[0] == g.board().rows[1]);
+    assert(countBits(g.board().rows[2]) + countBits(g.board().rows[3]) +
+           countBits(g.board().rows[4]) + countBits(g.board().rows[5]) == 4);   // the piece
+
+    // Same seed, same hole columns.
+    tb::Game h(42u, cfg);
+    h.setMessiness(0.0f);
+    h.queueGarbage(2);
+    h.stepPiece();
+    assert(h.board().rows[0] == g.board().rows[0]);
+
+    // Attack cancels pending garbage first. Find the first attacking piece on a clean run,
+    // then replay with (attack + 1) lines queued in front of it: exactly one row enters.
+    tb::Game a(7u, cfg);
+    int k = -1, atk = 0;
+    for (int i = 0; i < 300 && k < 0; ++i) {
+        const uint32_t before = a.attackSent();
+        a.stepPiece();
+        if (a.attackSent() > before) { k = i; atk = (int)(a.attackSent() - before); }
+    }
+    assert(k >= 0);
+    tb::Game b(7u, cfg);
+    b.setMessiness(0.0f);
+    for (int i = 0; i < k; ++i) b.stepPiece();
+    b.queueGarbage(atk + 1);
+    b.stepPiece();
+    assert(b.garbageReceived() == 1u);
+    assert(countBits(b.board().rows[0]) == 9);
+
+    // reset() drops whatever is pending.
+    b.queueGarbage(5);
+    b.reset(7u);
+    b.stepPiece();
+    assert(b.garbageReceived() == 0u);
+    assert(countBits(b.board().rows[0]) <= 4);
+}
+
 static void test_game_determinism() {
     // The anytime cut-off is wall-clock driven, so identical replay is only guaranteed when
     // the budget is never reached. That is what the huge timeBudgetMs is for.
@@ -2939,6 +2994,7 @@ int main() {
     RUN(test_game_b2b_survives_non_clearing_pieces);
     RUN(test_game_surge_accounting);
     RUN(test_game_determinism);
+    RUN(test_game_garbage);
     RUN(test_thousand_piece_run);
     RUN(test_snapshot_layout);
     RUN(test_weight_table);

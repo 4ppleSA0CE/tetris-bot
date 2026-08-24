@@ -29,6 +29,9 @@ void Game::reset(uint32_t seed) {
     maxB2b_        = 0;
     lastSearchMs_  = 0.0f;
     eventCount_    = 0;
+    pendingGarbage_   = 0;
+    garbageReceived_  = 0;
+    garbageRng_       = (seed ^ 0x5DEECE66u) == 0u ? 0x9E3779B9u : (seed ^ 0x5DEECE66u);
 }
 
 void Game::pushEvent(uint8_t type, uint8_t param) {
@@ -126,6 +129,22 @@ void Game::stepPiece() {
         if (ci.perfectClear) pushEvent(GEV_PERFECT_CLEAR, 0);
     } else {
         comboCount_ = 0;
+    }
+
+    if (pendingGarbage_ > 0) {
+        pendingGarbage_ -= atk;
+        if (pendingGarbage_ < 0) pendingGarbage_ = 0;
+    }
+    if (pendingGarbage_ > 0) {
+        const uint32_t redraw = (uint32_t)(messiness_ * 10000.0f);
+        int hole = (int)(xorshift32(garbageRng_) % (uint32_t)BOARD_W);
+        for (int i = 0; i < pendingGarbage_; ++i) {
+            if (i > 0 && xorshift32(garbageRng_) % 10000u < redraw)
+                hole = (int)(xorshift32(garbageRng_) % (uint32_t)BOARD_W);
+            addGarbage(board_, 1, hole);
+        }
+        garbageReceived_ += (uint32_t)pendingGarbage_;
+        pendingGarbage_ = 0;
     }
 
     // Lock-out: anything left at or above the top of the visible field ends the run.
