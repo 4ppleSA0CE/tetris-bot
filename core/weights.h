@@ -34,6 +34,12 @@ namespace tb {
 // the solo demo looks tamer for it. If the demo look ever matters more, the plan-6 vector
 // in git history is the solo-shaped one.
 //
+// A post-plan-9 duel-fitness retune at the new 6400-node calibration (20 more self-play
+// generations, best-vs-incumbent scores looked healthy throughout) LOST the held-out duel
+// against this vector 36-44 (LOS 0.19) and was rejected: self-play fitness tracks the
+// moving incumbent's lineage, not held-out strength. The duel gate on fresh seeds is the
+// only arbiter; a mid-looking training curve proves nothing either way.
+//
 // A plan-7 refinement (solo-attack CE after the transposition fold) had the mirror failure:
 // +0.07 attack/piece solo, REJECTED on a 35-45 duel loss (LOS 0.13) and 14 vs 3 top-outs.
 // Solo bench and duel disagree in both directions - the duel is the gate, always.
