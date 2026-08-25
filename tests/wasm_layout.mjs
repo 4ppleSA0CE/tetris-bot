@@ -48,6 +48,8 @@ assert.ok(layout.pendingGarbage.offset > layout.cellPiece.offset);
 assert.equal(layout.pendingSpin.offset + 1, layout.pathProgress.offset,
   'pendingSpin and pathProgress must be adjacent, in that order');
 
+assert.equal(typeof M.botSetTimeBudget, 'function', 'botSetTimeBudget export missing');
+
 const weights = JSON.parse(M.getWeightsInfo());
 assert.equal(weights.length, 21, `expected 21 weights, got ${weights.length}`);
 weights.forEach((w, i) => {

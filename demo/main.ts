@@ -15,10 +15,16 @@ const label = document.getElementById('rate-label') as HTMLSpanElement;
 // ?motion=1 animates even under an OS reduce-motion preference, so the demo can be
 // watched and screen-recorded without changing a system-wide accessibility setting.
 const ignoreReducedMotion = params.has('motion');
+// ?budget=10 raises the per-piece planning budget (ms). The 4.5 default protects the
+// frame rate; the chain-holding style needs ~10 ms of wasm search to sustain long b2b.
+const budgetParam = Number(params.get('budget'));
+const searchBudgetMs = Number.isFinite(budgetParam) && budgetParam > 0
+  ? Math.min(budgetParam, 50) : undefined;
 const bot = await createTetrisBot({
   seed: DEMO_SEED,
   pps: Number(slider.value),
   ignoreReducedMotion,
+  searchBudgetMs,
 });
 const renderer = createRenderer({ canvas, layout: 'demo', chrome: 'full' });
 renderer.resize();

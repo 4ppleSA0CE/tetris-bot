@@ -102,6 +102,12 @@ export interface BotConfig {
   beamWidth?: number;
   weights?: Partial<Weights>;
   /**
+   * Wall-clock planning budget per piece in ms, default 4.5. The default keeps a
+   * 60 fps frame intact; raising it buys search depth at the cost of an occasional
+   * long frame while a piece is being planned.
+   */
+  searchBudgetMs?: number;
+  /**
    * Animate even when the OS asks for reduced motion. Default false, i.e. the OS
    * preference wins and the bot settles one static board and then holds still.
    *

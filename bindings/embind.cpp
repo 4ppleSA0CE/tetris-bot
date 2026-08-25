@@ -140,6 +140,11 @@ bool botSetPPS(int32_t h, float pps) {
     return false;
 }
 
+bool botSetTimeBudget(int32_t h, float ms) {
+    if (auto* b = look(h)) { b->setTimeBudget(ms); return true; }
+    return false;
+}
+
 bool botSetWeight(int32_t h, int32_t index, float value) {
     if (auto* b = look(h)) { b->setWeight(index, value); return true; }
     return false;
@@ -175,6 +180,7 @@ EMSCRIPTEN_BINDINGS(tetris_bot_layout) {
     function("botTick",        &botTick);
     function("botSnapshotPtr", &botSnapshotPtr);
     function("botSetPPS",      &botSetPPS);
+    function("botSetTimeBudget", &botSetTimeBudget);
     function("botSetWeight",   &botSetWeight);
     function("botReset",       &botReset);
     function("botQueueGarbage", &botQueueGarbage);
