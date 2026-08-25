@@ -13,9 +13,8 @@ const FRAME_MS = 1000 / 60;
   let states = 0;
   let worstStates = Infinity;
   let biggestJump = 0;
-  let animatedFalls = 0;
-  let biggestFall = 0;
-  let descentFrames = 0;
+  let hardDrops = 0;
+  let dropped = false;
   let px = null;
   let py = null;
   let pieces = 0;
@@ -26,22 +25,19 @@ const FRAME_MS = 1000 / 60;
     const s = bot.snapshot();
     if (s.piecesPlaced !== serial) {
       if (serial > 0 && states < worstStates) worstStates = states;
-      if (serial > 0 && descentFrames >= 2) animatedFalls++;
+      if (serial > 0 && dropped) hardDrops++;
       serial = s.piecesPlaced;
       pieces++;
       states = 0;
-      descentFrames = 0;
+      dropped = false;
       px = null;
       py = null;
     } else if (px !== null) {
       if (s.activeX !== px || s.activeY !== py) states++;
-      // Sideways motion is animated; the hard-drop tail falls cell by cell too.
+      // ARR 0 / SDF infinite: the tap and DAS pause animate, the drop lands in a frame.
       const jump = Math.abs(s.activeX - px);
       if (jump > biggestJump) biggestJump = jump;
-      if (s.activeY < py) {
-        descentFrames++;
-        if (py - s.activeY > biggestFall) biggestFall = py - s.activeY;
-      }
+      if (s.activeY <= py - 6) dropped = true;
     }
     px = s.activeX;
     py = s.activeY;
@@ -49,7 +45,7 @@ const FRAME_MS = 1000 / 60;
   }
   bot.destroy();
 
-  console.log(`slide: ${pieces} pieces, min distinct states/piece ${worstStates}, biggest single-frame sideways jump ${biggestJump}, ${animatedFalls} animated falls, biggest fall step ${biggestFall}`);
+  console.log(`slide: ${pieces} pieces, min distinct states/piece ${worstStates}, biggest single-frame sideways jump ${biggestJump}, ${hardDrops} hard drops`);
   assert.ok(pieces > 250, `only ${pieces} pieces in 60s at 5 pps`);
   assert.ok(worstStates >= 1,
     `some piece never moved on screen (${worstStates} transitions) — that reads as a teleport`);
@@ -65,8 +61,7 @@ const FRAME_MS = 1000 / 60;
   // skipping the replay entirely reads as a single ~20-cell jump.
   assert.ok(biggestJump <= 8,
     `piece moved ${biggestJump} columns in one frame — the path is being skipped`);
-  assert.ok(animatedFalls * 2 >= pieces, `only ${animatedFalls} of ${pieces} falls spanned 2+ frames`);
-  assert.ok(biggestFall <= 12, `a piece fell ${biggestFall} cells in one frame — that is a teleport, not a fall`);
+  assert.ok(hardDrops * 2 >= pieces, `only ${hardDrops} of ${pieces} pieces hard-dropped`);
 }
 
 // --- 2. pacing is uniform ----------------------------------------------------

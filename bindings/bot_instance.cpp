@@ -378,19 +378,20 @@ void BotInstance::lockCurrent() {
 }
 
 void BotInstance::writeActive(double nowMs) {
-    // TETR.IO-style playback: the piece idles at spawn while the bot "thinks", then
-    // executes with handling-cadence timing -- first shift as a tap, the second after a
-    // DAS delay, further repeats at ARR rate, rotations quick, and the collapsed
-    // hard-drop tail animated as a per-cell fast fall instead of a one-step teleport.
-    // Everything finishes by SETTLE_AT; the placed piece rests on the stack after that.
-    // When the natural cadence exceeds the window (high PPS) it is scaled to fit.
+    // TETR.IO handling playback: the piece idles at spawn while the bot "thinks", then
+    // executes at competitive handling -- first shift as a tap, the DAS delay, then the
+    // rest of the run instantly (ARR 0), with every drop instant too (SDF infinite).
+    // The tap and the DAS pause are what keep the motion readable; the renderer's
+    // easing turns the zero-ARR zip into an on-screen slide. Everything finishes by
+    // SETTLE_AT; the placed piece rests on the stack after that. When the natural
+    // cadence exceeds the window (high PPS) it is scaled to fit.
     constexpr double SETTLE_AT = 0.75;
     constexpr double ROT_MS  = 30.0;
     constexpr double TAP_MS  = 40.0;
     constexpr double DAS_MS  = 90.0;
-    constexpr double ARR_MS  = 20.0;
-    constexpr double SOFT_MS = 30.0;   // per cell, surviving tuck/spin soft drops
-    constexpr double HARD_MS = 7.0;    // per cell of the final fall
+    constexpr double ARR_MS  = 0.0;
+    constexpr double SOFT_MS = 0.0;    // SDF infinite: tuck/spin soft drops are instant
+    constexpr double HARD_MS = 0.0;    // and so is the final fall
 
     double u = pieceMs_ > 0.0 ? (nowMs - pieceStartMs_) / pieceMs_ : 1.0;
     u = std::clamp(u, 0.0, 1.0);
@@ -434,9 +435,8 @@ void BotInstance::writeActive(double nowMs) {
     snap_.activeX     = pathX_[k];
     snap_.activeY     = pathY_[k];
     snap_.activeRot   = pathR_[k];
-    if (k < pathSteps_) {
-        // Mid-transition: only the fall is drawn cell by cell; shifts and rotations
-        // stay snapped to the departure state until their duration elapses.
+    if (k < pathSteps_ && HARD_MS > 0.0) {
+        // A timed fall is drawn cell by cell; with SDF infinite this never runs.
         const int fall = pathY_[k] - pathY_[k + 1];
         if (fall > 1 && dur[k] * scale > 0.0) {
             const double frac = (elapsed - acc) / (dur[k] * scale);
