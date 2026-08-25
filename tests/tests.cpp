@@ -3081,42 +3081,47 @@ static void test_bot_instance_path_replay() {
     assert(minDistinct >= 1);             // every piece visibly moves at least once (hover -> landed)
 }
 
-// Hard drop preferred: the path's trailing soft drops collapse into one drop, the piece
-// hovers while it shifts and turns, then lands in a single frame and rests on its ghost
-// for the last quarter of the interval. Soft drops survive only when something follows
-// them (a tuck or a spin).
+// The collapsed hard-drop tail is ANIMATED: the piece falls cell by cell over several
+// frames instead of landing in a single-frame teleport, and still comes to rest on its
+// ghost before the lock. Soft drops survive only when something follows them (a tuck
+// or a spin).
 static void test_bot_instance_hard_drops() {
     tb::BotInstance bot(42, 5.0f, 3, 40);
     const tb::Snapshot* s = bot.snapshotPtr();
 
     uint32_t lastPieces = 0;
-    int pieces = 0, landedLast = 0, hardDropped = 0;
+    int pieces = 0, landedLast = 0, animatedFall = 0, maxFrameDrop = 0;
+    int descentFrames = 0;
     int8_t prevY = 0, lastY = 0, lastGhost = 0;
-    bool bigDrop = false, first = true;
+    bool first = true;
     for (int f = 1; f <= 2400; ++f) {
         bot.tick(f * 16.6667);
         if (s->piecesPlaced != lastPieces) {
             if (lastPieces > 0) {
                 ++pieces;
                 if (lastY == lastGhost) ++landedLast;
-                if (bigDrop) ++hardDropped;
+                if (descentFrames >= 2) ++animatedFall;
             }
             lastPieces = s->piecesPlaced;
-            bigDrop = false;
+            descentFrames = 0;
             first = true;
-        } else if (!first && s->activeY <= prevY - 6) {
-            bigDrop = true;
+        } else if (!first && s->activeY < prevY) {
+            ++descentFrames;
+            const int drop = prevY - s->activeY;
+            if (drop > maxFrameDrop) maxFrameDrop = drop;
         }
         first = false;
         prevY = s->activeY;
         lastY = s->activeY;
         lastGhost = s->ghostY;
     }
-    std::printf("      hard drops: %d pieces, %d rested on the ghost, %d dropped >= 6 in a frame\n",
-                pieces, landedLast, hardDropped);
+    std::printf("      falls: %d pieces, %d rested on the ghost, %d fell over 2+ frames, "
+                "max %d cells in a frame\n",
+                pieces, landedLast, animatedFall, maxFrameDrop);
     assert(pieces > 150);
     assert(landedLast == pieces);
-    assert(hardDropped * 2 >= pieces);
+    assert(animatedFall * 2 >= pieces);   // most falls span multiple frames
+    assert(maxFrameDrop <= 12);           // and none is the old full-height teleport
 }
 
 // ---------------------------------------------------------------------------

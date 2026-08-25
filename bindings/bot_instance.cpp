@@ -378,22 +378,72 @@ void BotInstance::lockCurrent() {
 }
 
 void BotInstance::writeActive(double nowMs) {
-    // Path states step at a constant rate over the first three quarters of the piece
-    // interval; the placed piece rests on the stack for the last quarter.
+    // TETR.IO-style playback: the piece idles at spawn while the bot "thinks", then
+    // executes with handling-cadence timing -- first shift as a tap, the second after a
+    // DAS delay, further repeats at ARR rate, rotations quick, and the collapsed
+    // hard-drop tail animated as a per-cell fast fall instead of a one-step teleport.
+    // Everything finishes by SETTLE_AT; the placed piece rests on the stack after that.
+    // When the natural cadence exceeds the window (high PPS) it is scaled to fit.
     constexpr double SETTLE_AT = 0.75;
+    constexpr double ROT_MS  = 30.0;
+    constexpr double TAP_MS  = 40.0;
+    constexpr double DAS_MS  = 90.0;
+    constexpr double ARR_MS  = 20.0;
+    constexpr double SOFT_MS = 30.0;   // per cell, surviving tuck/spin soft drops
+    constexpr double HARD_MS = 7.0;    // per cell of the final fall
+
     double u = pieceMs_ > 0.0 ? (nowMs - pieceStartMs_) / pieceMs_ : 1.0;
     u = std::clamp(u, 0.0, 1.0);
-
     snap_.pathProgress = static_cast<uint8_t>(u * 255.0 + 0.5);
-    int k = u >= SETTLE_AT ? pathSteps_
-                           : static_cast<int>(u / SETTLE_AT * static_cast<double>(pathSteps_));
-    if (k > pathSteps_) k = pathSteps_;
-    if (k < 0) k = 0;
+
+    double dur[MAX_PATH_LEN + 1];
+    double total = 0.0;
+    int    horizRun = 0;
+    for (int i = 0; i < pathSteps_; ++i) {
+        const int dx = pathX_[i + 1] - pathX_[i];
+        const int dy = pathY_[i] - pathY_[i + 1];
+        const bool rotated = pathR_[i + 1] != pathR_[i];
+        double d;
+        if (dx != 0 && !rotated) {
+            horizRun += 1;
+            d = horizRun == 1 ? TAP_MS : horizRun == 2 ? DAS_MS : ARR_MS;
+        } else {
+            horizRun = 0;
+            if (rotated)      d = ROT_MS;
+            else if (dy == 1) d = SOFT_MS;
+            else if (dy > 1)  d = dy * HARD_MS;
+            else              d = 0.0;   // no-op action, state unchanged
+        }
+        dur[i] = d;
+        total += d;
+    }
+
+    const double window = SETTLE_AT * pieceMs_;
+    const double scale  = (total > window && total > 0.0) ? window / total : 1.0;
+    const double startAt = window - total * scale;   // think first, finish at SETTLE_AT
+
+    const double elapsed = u * pieceMs_;
+    double acc = startAt;
+    int k = 0;
+    while (k < pathSteps_ && elapsed >= acc + dur[k] * scale) {
+        acc += dur[k] * scale;
+        k += 1;
+    }
 
     snap_.activePiece = static_cast<int8_t>(current_);
     snap_.activeX     = pathX_[k];
     snap_.activeY     = pathY_[k];
     snap_.activeRot   = pathR_[k];
+    if (k < pathSteps_) {
+        // Mid-transition: only the fall is drawn cell by cell; shifts and rotations
+        // stay snapped to the departure state until their duration elapses.
+        const int fall = pathY_[k] - pathY_[k + 1];
+        if (fall > 1 && dur[k] * scale > 0.0) {
+            const double frac = (elapsed - acc) / (dur[k] * scale);
+            const int cells = static_cast<int>(frac * static_cast<double>(fall));
+            snap_.activeY = static_cast<int8_t>(pathY_[k] - std::clamp(cells, 0, fall));
+        }
+    }
     snap_.ghostY      = static_cast<int8_t>(
         dropY(board_, current_, static_cast<Rot>(pathR_[k]), pathX_[k], pathY_[k]));
 }
