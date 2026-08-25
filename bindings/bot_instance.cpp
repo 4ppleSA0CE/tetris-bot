@@ -389,12 +389,12 @@ void BotInstance::lockCurrent() {
 }
 
 void BotInstance::writeActive(double nowMs) {
-    // Continuous playback: the piece starts moving the moment it spawns and its route
-    // is stretched (or compressed) to fill the interval up to SETTLE_AT, so there is
-    // no think-pause at the top and no dead time -- something is always in motion.
-    // The per-step weights keep the handling READ of a player: quick rotations, a tap
-    // then DAS then ARR-rate shifts, and a fast cell-by-cell fall rather than an
-    // instant teleport. The placed piece rests only briefly before the next spawn.
+    // Player-rhythm playback: the piece starts working the moment it spawns -- DAS/ARR
+    // sideways cadence up top while gravity drifts it slowly downward -- then the
+    // hard-drop tail is a SHARP fast fall, and the placed piece rests on the stack
+    // until the next spawn. The contrast between the slow drift and the fast fall is
+    // what reads as hover...slam rather than one long soft drop. Natural speed always;
+    // the route is only compressed when it cannot fit the interval (high PPS).
     constexpr double SETTLE_AT = 0.90;
     constexpr double GRAV_MS = 50.0;   // visual gravity: ms per cell of downward drift
     constexpr double ROT_MS  = 30.0;
@@ -402,7 +402,7 @@ void BotInstance::writeActive(double nowMs) {
     constexpr double DAS_MS  = 90.0;
     constexpr double ARR_MS  = 15.0;
     constexpr double SOFT_MS = 25.0;   // per cell, surviving tuck/spin soft drops
-    constexpr double HARD_MS = 7.0;    // per cell of the final fall
+    constexpr double HARD_MS = 3.0;    // per cell of the final fall: a slam, not a drift
 
     double u = pieceMs_ > 0.0 ? (nowMs - pieceStartMs_) / pieceMs_ : 1.0;
     u = std::clamp(u, 0.0, 1.0);
@@ -431,7 +431,7 @@ void BotInstance::writeActive(double nowMs) {
     }
 
     const double window = SETTLE_AT * pieceMs_;
-    const double scale  = total > 0.0 ? window / total : 1.0;   // fill the window exactly
+    const double scale  = (total > window && total > 0.0) ? window / total : 1.0;
 
     const double elapsed = u * pieceMs_;
     double acc = 0.0;
