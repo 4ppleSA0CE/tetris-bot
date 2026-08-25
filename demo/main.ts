@@ -27,6 +27,13 @@ const bot = await createTetrisBot({
   searchBudgetMs,
 });
 const renderer = createRenderer({ canvas, layout: 'demo', chrome: 'full' });
+// Live handles for headless probes and console poking; not part of the page UI.
+let maxB2bSeen = 0;
+(window as unknown as Record<string, unknown>).__snap = () => {
+  const s = bot.snapshot();
+  return { piecesPlaced: s.piecesPlaced, b2bCount: s.b2bCount, maxB2b: maxB2bSeen,
+           attackSent: s.attackSent, state: s.state };
+};
 renderer.resize();
 
 slider.addEventListener('input', () => {
@@ -58,6 +65,7 @@ let raf = 0;
 const loop = (t: number): void => {
   bot.tick(t);
   const snap = bot.snapshot();
+  if (snap.b2bCount > maxB2bSeen) maxB2bSeen = snap.b2bCount;
   if (garbageOn && snap.piecesPlaced >= lastAttackAt + 12) {
     lastAttackAt = snap.piecesPlaced;
     bot.queueGarbage(1 + (mix(snap.piecesPlaced ^ DEMO_SEED) % 4));
