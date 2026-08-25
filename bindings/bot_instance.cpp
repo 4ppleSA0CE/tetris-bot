@@ -59,6 +59,11 @@ BotInstance::BotInstance(uint32_t seed, float pps, int searchDepth, int beamWidt
     : bag_(seed), seed_(seed), pps_(pps) {
     cfg_.depth     = searchDepth;
     cfg_.beamWidth = beamWidth;
+    // Plan by node count, not wall clock. A 4.5 ms wall-clock budget starves the search
+    // to ~1000 nodes whenever the host machine is loaded, which collapses play quality;
+    // 4500 nodes is the same work regardless of load (~4.5 ms of idle-machine wasm).
+    cfg_.nodeBudget   = 4500;
+    cfg_.timeBudgetMs = 1.0e9f;
     reset(seed);
 }
 
@@ -76,6 +81,7 @@ void BotInstance::setWeight(int index, float value) {
 }
 
 void BotInstance::setTimeBudget(float ms) { cfg_.timeBudgetMs = ms; }
+void BotInstance::setNodeBudget(long n) { cfg_.nodeBudget = n; }
 
 void BotInstance::reset(uint32_t seed) {
     seed_ = seed;

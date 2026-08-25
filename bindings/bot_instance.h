@@ -44,6 +44,7 @@ public:
     // so ANY wall-clock hiccup changes its answer. A run that must be reproducible
     // sets this high enough that the budget is never reached.
     void setTimeBudget(float ms);
+    void setNodeBudget(long n);
     void reset(uint32_t seed);
     // Queue incoming garbage. Invalidates the current plan so the search reacts to the
     // threat immediately -- Game's search-and-lock is atomic, so this is what keeps the

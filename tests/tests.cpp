@@ -3191,6 +3191,7 @@ static void test_game_bot_instance_parity() {
     cfg.depth        = 3;
     cfg.beamWidth    = 24;
     cfg.timeBudgetMs = 1.0e9f;
+    cfg.nodeBudget   = 4500;   // BotInstance's constructor default; Game must match it
 
     const uint32_t seed = 42;
     tb::Game        game(seed, cfg);
