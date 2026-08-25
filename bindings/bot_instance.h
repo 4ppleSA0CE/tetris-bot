@@ -101,6 +101,7 @@ private:
     int8_t    pathX_[MAX_PATH_LEN + 1]{};
     int8_t    pathY_[MAX_PATH_LEN + 1]{};
     int8_t    pathR_[MAX_PATH_LEN + 1]{};
+    int8_t    pathFloor_[MAX_PATH_LEN + 1]{};  // lowest safe display y per state, suffix-maxed
     int       pathSteps_ = 0;
 
     double pieceMs_       = 0.0;

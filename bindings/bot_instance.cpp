@@ -192,6 +192,17 @@ void BotInstance::buildPathStates() {
     pathX_[pathSteps_] = plan_.x;
     pathY_[pathSteps_] = plan_.y;
     pathR_[pathSteps_] = static_cast<int8_t>(plan_.rot);
+
+    // Visual-gravity clearance: at state i the drawn piece may drift down to the
+    // highest ghost row of any REMAINING state, so it slides over every upcoming
+    // column instead of clipping into one it still has to cross. Tuck states are
+    // unaffected -- their own path y is below this clamp and wins in writeActive.
+    pathFloor_[pathSteps_] = plan_.y;
+    for (int i = pathSteps_ - 1; i >= 0; --i) {
+        const int8_t own = static_cast<int8_t>(
+            dropY(board_, current_, static_cast<Rot>(pathR_[i]), pathX_[i], pathY_[i]));
+        pathFloor_[i] = own > pathFloor_[i + 1] ? own : pathFloor_[i + 1];
+    }
 }
 
 void BotInstance::recomputeTempo() {
@@ -385,6 +396,7 @@ void BotInstance::writeActive(double nowMs) {
     // then DAS then ARR-rate shifts, and a fast cell-by-cell fall rather than an
     // instant teleport. The placed piece rests only briefly before the next spawn.
     constexpr double SETTLE_AT = 0.90;
+    constexpr double GRAV_MS = 50.0;   // visual gravity: ms per cell of downward drift
     constexpr double ROT_MS  = 30.0;
     constexpr double TAP_MS  = 40.0;
     constexpr double DAS_MS  = 90.0;
@@ -442,6 +454,16 @@ void BotInstance::writeActive(double nowMs) {
             const int cells = static_cast<int>(frac * static_cast<double>(fall));
             snap_.activeY = static_cast<int8_t>(pathY_[k] - std::clamp(cells, 0, fall));
         }
+    }
+
+    // Gravity drift: the piece sinks one cell every GRAV_MS while it works, clamped
+    // to the clearance floor for the rest of its route. Tucks and kicks sit below
+    // the clamp, so their exact path position wins the min().
+    {
+        const int gravCell = static_cast<int>(SPAWN_Y) -
+                             static_cast<int>(elapsed / GRAV_MS);
+        int driftY = gravCell > pathFloor_[k] ? gravCell : pathFloor_[k];
+        if (driftY < snap_.activeY) snap_.activeY = static_cast<int8_t>(driftY);
     }
     snap_.ghostY      = static_cast<int8_t>(
         dropY(board_, current_, static_cast<Rot>(pathR_[k]), pathX_[k], pathY_[k]));
