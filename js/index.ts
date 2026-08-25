@@ -39,8 +39,8 @@ export interface LoadedModule {
 
 const DEFAULT_SEED = 0;
 const DEFAULT_PPS = 5;
-const DEFAULT_DEPTH = 5;
-const DEFAULT_WIDTH = 100;
+const DEFAULT_DEPTH = 7;
+const DEFAULT_WIDTH = 30;
 
 /**
  * Ticks used to settle a reduced-motion board. Each carries a full second of

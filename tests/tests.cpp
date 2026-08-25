@@ -2307,8 +2307,8 @@ static void test_search_empty_board() {
         tb::PIECE_I, tb::PIECE_O, tb::PIECE_T, tb::PIECE_L, tb::PIECE_J
     };
     tb::SearchConfig cfg;
-    assert(cfg.depth == 5);
-    assert(cfg.beamWidth == 100);
+    assert(cfg.depth == 7);
+    assert(cfg.beamWidth == 30);
     assert(std::fabs(cfg.gamma - 0.95f) < 1e-6f);
     // 4.8, not 5.0, and the difference is load-bearing. PRD 4.5 requires the search to
     // COMPLETE inside 5 ms, but the loop breaks when `elapsed > timeBudgetMs` -- always

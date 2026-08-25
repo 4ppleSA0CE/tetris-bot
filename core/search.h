@@ -6,8 +6,11 @@
 namespace tb {
 
 struct SearchConfig {
-    int   depth      = 5;
-    int   beamWidth  = 100;
+    // Narrow-deep beats wide-shallow at every measured budget: at 6400 nodes 30/7 beats
+    // the old 100/5 71-9 in the duel (elo +359, LOS 1.000) and lifts solo max b2b 3-4x;
+    // at the ~3500 nodes a browser reaches it also adds ~35% attack. p99 stays under 5 ms.
+    int   depth      = 7;
+    int   beamWidth  = 30;
     float gamma      = 0.95f;
     // 4.8, not 5.0. PRD 4.5 requires the search to COMPLETE within 5 ms, and the loop
     // breaks when `elapsed > timeBudgetMs` -- i.e. always just AFTER the budget, never

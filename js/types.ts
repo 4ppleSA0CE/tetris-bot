@@ -96,9 +96,9 @@ export interface BotConfig {
   seed?: number;
   /** 1-20, default 5. */
   pps?: number;
-  /** default 5 */
+  /** default 7 */
   searchDepth?: number;
-  /** default 100 */
+  /** default 30 */
   beamWidth?: number;
   weights?: Partial<Weights>;
   /**
