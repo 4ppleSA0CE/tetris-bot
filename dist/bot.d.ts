@@ -18,6 +18,7 @@ interface EmbindModule {
   botSnapshotPtr(_0: number): number;
   botCreate(_0: number, _1: number, _2: number, _3: number): number;
   botSetPPS(_0: number, _1: number): boolean;
+  botSetTimeBudget(_0: number, _1: number): boolean;
   botSetWeight(_0: number, _1: number, _2: number): boolean;
   botTick(_0: number, _1: number): boolean;
   getSnapshotLayout(): string;
