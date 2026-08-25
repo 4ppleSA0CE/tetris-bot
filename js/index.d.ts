@@ -19,6 +19,7 @@ export interface BotModule {
     botSetPPS(handle: number, pps: number): boolean;
     botQueueGarbage(handle: number, lines: number): boolean;
     botSetWeight(handle: number, index: number, value: number): boolean;
+    botSetTimeBudget(handle: number, ms: number): boolean;
     botReset(handle: number, seed: number): boolean;
     botDestroy(handle: number): boolean;
     botLiveCount(): number;

@@ -3,8 +3,8 @@ import { SnapshotView, computeStructSize, setPieceCells } from './layout.js';
 export { EventType, PieceLetter, SpinKind } from './types.js';
 const DEFAULT_SEED = 0;
 const DEFAULT_PPS = 5;
-const DEFAULT_DEPTH = 5;
-const DEFAULT_WIDTH = 100;
+const DEFAULT_DEPTH = 7;
+const DEFAULT_WIDTH = 30;
 /**
  * Ticks used to settle a reduced-motion board. Each carries a full second of
  * simulated time, so at the default 5 PPS this places roughly 40 pieces before
@@ -67,6 +67,9 @@ export function isViewportBelow(minWidthPx) {
 export async function createTetrisBot(config = {}) {
     const { mod, layout, structSize, weightIndex } = await loadBotModule();
     const handle = mod.botCreate(config.seed ?? DEFAULT_SEED, clampPPS(config.pps ?? DEFAULT_PPS), config.searchDepth ?? DEFAULT_DEPTH, config.beamWidth ?? DEFAULT_WIDTH);
+    if (config.searchBudgetMs !== undefined && config.searchBudgetMs > 0) {
+        mod.botSetTimeBudget(handle, config.searchBudgetMs);
+    }
     if (config.weights) {
         for (const [name, value] of Object.entries(config.weights)) {
             const index = weightIndex.get(name);
