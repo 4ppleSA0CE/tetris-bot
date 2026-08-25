@@ -12,7 +12,7 @@ from concurrent.futures import ThreadPoolExecutor
 BIN = './build/tetris_bot'
 
 
-def game(wa, wb, seed_a, seed_b, pieces, nodes, nodes_b=0):
+def game(wa, wb, seed_a, seed_b, pieces, nodes, nodes_b=0, shape_a=None, shape_b=None):
     cmd = [BIN, '--versus', wb, '--seed', str(seed_a), '--seed2', str(seed_b),
            '--pieces', str(pieces), '--json']
     if wa:
@@ -21,8 +21,19 @@ def game(wa, wb, seed_a, seed_b, pieces, nodes, nodes_b=0):
         cmd += ['--nodes', str(nodes)]
     if nodes_b:
         cmd += ['--nodes2', str(nodes_b)]
+    if shape_a:
+        cmd += ['--width', str(shape_a[0]), '--depth', str(shape_a[1])]
+    if shape_b:
+        cmd += ['--width2', str(shape_b[0]), '--depth2', str(shape_b[1])]
     out = subprocess.run(cmd, capture_output=True, text=True, check=True).stdout
     return json.loads(out.strip().splitlines()[-1])
+
+
+def parse_shape(spec):
+    if not spec:
+        return None
+    w, d = spec.split(',')
+    return int(w), int(d)
 
 
 def main():
@@ -35,6 +46,8 @@ def main():
     ap.add_argument('--nodes', type=int, default=6400)
     ap.add_argument('--nodes-b', type=int, default=0,
                     help='opponent node budget (candidate keeps --nodes): asymmetric depth duel')
+    ap.add_argument('--shape-a', default='', help='candidate A beam "width,depth"')
+    ap.add_argument('--shape-b', default='', help='candidate B beam "width,depth"')
     ap.add_argument('--workers', type=int, default=10)
     args = ap.parse_args()
 
@@ -49,7 +62,10 @@ def main():
         # The node budget follows the candidate across seats exactly like the weights do.
         na = args.nodes if not swapped else (args.nodes_b or args.nodes)
         nb = (args.nodes_b or args.nodes) if not swapped else args.nodes
-        r = game(wa, wb, s1, s2, args.pieces, na, nb if nb != na else 0)
+        # Beam shapes follow the candidates across seats exactly like weights and budgets.
+        sa = parse_shape(args.shape_a if not swapped else args.shape_b)
+        sb = parse_shape(args.shape_b if not swapped else args.shape_a)
+        r = game(wa, wb, s1, s2, args.pieces, na, nb if nb != na else 0, sa, sb)
         w = r['winner']
         if w == 'draw':
             return 'D', r
