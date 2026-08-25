@@ -1,20 +1,4 @@
 #!/usr/bin/env bash
-# Builds the single-file WASM bundle into dist/. See PRD section 5.3.
-#
-#   ./build.sh
-#
-# Requires emsdk. If em++ is not already on PATH this sources ~/emsdk/emsdk_env.sh.
-#
-# DEVIATIONS FROM PRD SECTION 5.3, all deliberate:
-#   -Oz -flto  replaces -O3. Size is the hard budget (500 KB, PRD section 11);
-#              Task 24 Step 6b measures per-piece search time in wasm and says
-#              what to do if -Oz costs more than the 5 ms budget allows.
-#   MODULARIZE is omitted: EXPORT_ES6=1 implies it.
-#   ENVIRONMENT=web,node  adds only `node`, so the test scripts run the SHIPPED
-#              artifact. `worker` is excluded on purpose - PRD section 2 lists
-#              Web Worker execution as a non-goal.
-#   -I .       is load-bearing: core headers include each other as
-#              "core/types.h", which resolves only from the repo root.
 set -euo pipefail
 shopt -s nullglob
 

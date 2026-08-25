@@ -1,5 +1,3 @@
-// computeStructSize() is the JS half of the layout check. It must reproduce the
-// C++ compiler's padding rule from field records alone.
 import assert from 'node:assert/strict';
 import { computeStructSize, setPieceCells, getPieceCells } from '../js/layout.js';
 

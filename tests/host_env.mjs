@@ -1,7 +1,5 @@
-// PRD section 6: host-environment behavior belongs in the wrapper, not the core.
 import assert from 'node:assert/strict';
 
-// --- prefers-reduced-motion -------------------------------------------------
 globalThis.window = {
   innerWidth: 1440,
   matchMedia: (q) => ({ matches: q.includes('prefers-reduced-motion') }),
@@ -19,8 +17,6 @@ assert.equal(frozen.snapshot().piecesPlaced, settled,
   'tick() advanced the simulation under prefers-reduced-motion');
 frozen.destroy();
 
-// --- explicit opt-out, for a page author who wants to watch or record it -----
-// Same OS preference still reporting `reduce`; only this one bot ignores it.
 const moving = await createTetrisBot({ seed: 42, pps: 5, ignoreReducedMotion: true });
 assert.equal(moving.snapshot().piecesPlaced, 0,
   'ignoreReducedMotion must skip the settle-a-static-board step, not just unfreeze after it');
@@ -30,10 +26,8 @@ const moved = moving.snapshot().piecesPlaced;
 assert.ok(moved >= 40, `override ticked only ${moved} pieces in 10s at 5 pps`);
 moving.destroy();
 
-// The default is unchanged: absent the flag, the OS preference still wins.
 assert.equal(prefersReducedMotion(), true, 'the OS preference must still report reduce');
 
-// --- viewport check ---------------------------------------------------------
 assert.equal(isViewportBelow(768), false, '1440px reported as below 768px');
 globalThis.window.innerWidth = 500;
 assert.equal(isViewportBelow(768), true, '500px not reported as below 768px');

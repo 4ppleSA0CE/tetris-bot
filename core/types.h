@@ -26,9 +26,8 @@ constexpr int VISIBLE_H = 20;
 constexpr uint16_t FULL_ROW = 0x3FF;
 constexpr int PREVIEW_LEN = 5;
 
-// bit i of rows[y] = column i occupied. rows[0] = bottom row.
 struct Board {
     uint16_t rows[BOARD_H];
 };
 
-} // namespace tb
+}

@@ -16,11 +16,9 @@ r.resize();
 const accentTexts = () => canvas.ops.filter(
   (o) => o.op === 'fillText' && o.fillStyle === TEST_VARS['--bot-accent']);
 
-// No events -> no accent anywhere.
 r.draw(fakeSnapshot());
 assert.equal(accentTexts().length, 0, 'accent used with no events pending');
 
-// Drain one T-spin double and one B2B extend.
 canvas.ops.length = 0;
 r.draw(fakeSnapshot({ events: [
   { type: EventType.TSPIN_DOUBLE, param: 2, frame: 1 },
@@ -30,7 +28,6 @@ let texts = accentTexts().map((o) => o.args[0]);
 assert.ok(texts.includes('T-SPIN DOUBLE'), `missing T-SPIN DOUBLE, got ${JSON.stringify(texts)}`);
 assert.ok(texts.includes('BACK-TO-BACK ×4'), `missing BACK-TO-BACK x4, got ${JSON.stringify(texts)}`);
 
-// Callouts sit OUTSIDE the well (PRD 7.3: keep them out of the well itself).
 const wellRight = canvas.ops.find((o) => o.op === 'strokeRect' &&
   o.strokeStyle === TEST_VARS['--bot-grid']);
 const wellX = wellRight.args[0];
@@ -41,7 +38,6 @@ for (const t of accentTexts()) {
     `callout at x=${x} is inside the well [${wellX}, ${wellX + wellW}]`);
 }
 
-// The pop grows the type size over the first frames.
 const firstFont = accentTexts()[0].font;
 canvas.ops.length = 0;
 await new Promise((res) => setTimeout(res, 160));
@@ -51,13 +47,11 @@ const px = (f) => Number(/(\d+)px/.exec(f)[1]);
 assert.ok(px(grownFont) > px(firstFont),
   `callout did not scale in: ${firstFont} -> ${grownFont}`);
 
-// Everything is gone after the 800ms lifetime.
 canvas.ops.length = 0;
 await new Promise((res) => setTimeout(res, 900));
 r.draw(fakeSnapshot());
 assert.equal(accentTexts().length, 0, 'callout outlived its 800ms fade');
 
-// TETRIS, and nothing but the callouts is ever accent-coloured.
 canvas.ops.length = 0;
 r.draw(fakeSnapshot({ events: [{ type: EventType.TETRIS, param: 4, frame: 9 }] }));
 assert.deepEqual(accentTexts().map((o) => o.args[0]), ['TETRIS']);
@@ -65,7 +59,6 @@ const nonText = canvas.ops.filter((o) => o.op !== 'fillText' &&
   (o.fillStyle === TEST_VARS['--bot-accent'] || o.strokeStyle === TEST_VARS['--bot-accent']));
 assert.equal(nonText.length, 0, `accent used on ${nonText.length} non-text ops`);
 
-// chrome: 'none' suppresses callouts entirely.
 const bare = makeCanvas(360, 720, TEST_VARS);
 const r2 = createRenderer({ canvas: bare, layout: 'sidebar', chrome: 'none' });
 r2.resize();
@@ -77,7 +70,6 @@ r.destroy();
 r2.destroy();
 console.log('renderer callouts OK: accent appears only in callout text');
 
-// All-mini+: a spin callout names the piece that locked (PIECE_LOCK param, same tick).
 const cSpin = makeCanvas(360, 720, TEST_VARS);
 const rSpin = createRenderer({ canvas: cSpin, layout: 'demo', chrome: 'full' });
 rSpin.resize();
@@ -89,7 +81,6 @@ rSpin.draw(fakeSnapshot({ events: [
 ] }));
 assert.ok(accentOn(cSpin).includes('Z-SPIN MINI'), `missing Z-SPIN MINI, got ${JSON.stringify(accentOn(cSpin))}`);
 
-// A B2B break shouts the Surge it released; a break with nothing charged is silent.
 cSpin.ops.length = 0;
 rSpin.draw(fakeSnapshot({ events: [{ type: EventType.B2B_BREAK, param: 7, frame: 3 }] }));
 assert.ok(accentOn(cSpin).includes('SURGE +7'), `missing SURGE +7, got ${JSON.stringify(accentOn(cSpin))}`);

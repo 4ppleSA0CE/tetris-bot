@@ -1,5 +1,3 @@
-// Static discipline check on the renderer source. PRD section 7.1: ship no
-// hardcoded colors, and --bot-accent appears ONLY in callouts.
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
@@ -17,7 +15,6 @@ src.split('\n').forEach((line, i) => {
 assert.equal(hits.length, 0,
   `renderers/canvas-mono.ts contains color literals:\n${hits.join('\n')}`);
 
-// --bot-accent is read in exactly one function, called from exactly one place.
 const accentProp = (src.match(/--bot-accent/g) ?? []).length;
 assert.equal(accentProp, 1,
   `"--bot-accent" must appear exactly once (inside readAccent), found ${accentProp}`);

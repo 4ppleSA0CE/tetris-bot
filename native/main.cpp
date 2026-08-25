@@ -1,11 +1,3 @@
-// native/main.cpp -- development CLI harness. Runs the core natively, no browser.
-//
-//   ./tetris_bot [--seed N] [--pieces N] [--random] [--print] [--stats]
-//
-// This milestone implements --random only: uniformly random hard-drop
-// placements, no search, no evaluation, no spin classification. The search
-// milestone adds --depth and --width.
-
 #include <algorithm>
 #include <chrono>
 #include <cmath>
@@ -70,25 +62,15 @@ void usage() {
                  "  --movegen-bench   plan 2's generateMoves throughput benchmark\n");
 }
 
-} // namespace
+}
 
-// ---------------------------------------------------------------------------
-// --movegen : move-generation inspection mode (milestone 2).
-//
-// Runs generateMoves for the T piece on a named hand-built fixture, prints
-// every placement classified as a spin together with the action path that
-// reaches it, and prints one GATE line per fixture stating whether the exact
-// expected placement was found. Exit code 0 only if every gate passes.
-// ---------------------------------------------------------------------------
 namespace {
 
 struct MovegenFixture {
     const char*        name;
     const char* const* rows;
     int                nRows;
-    // expX >= 0 : this exact spin placement must exist
-    // expX == -1: there must be ZERO spin placements
-    // expX == -2: no expectation, printed for inspection only
+
     int                expX, expY;
     tb::Rot            expRot;
     tb::SpinKind       expSpin;
@@ -181,7 +163,6 @@ void mgPrintPlacement(const tb::Board& b, const tb::Placement& pl) {
     std::printf("\n");
 }
 
-// Returns true if the fixture's gate passes.
 bool mgRunFixture(const MovegenFixture& f) {
     const tb::Board b = tb::boardFromAscii(f.rows, f.nRows);
     static tb::MoveList ml;
@@ -255,9 +236,6 @@ int runMovegenMode(const char* which) {
     return all ? 0 : 1;
 }
 
-// --movegen-bench : how many generateMoves calls per second, on a board with
-// realistic clutter. PRD 4.5 needs roughly 200,000/sec for a depth-5,
-// width-100 beam with hold branching to fit inside 5 ms.
 int runMovegenBench(int iters) {
     const tb::Board b = tb::boardFromAscii(MG_FIX_MID, 10);
     static tb::MoveList ml;
@@ -265,7 +243,6 @@ int runMovegenBench(int iters) {
 
     std::printf("movegen-bench: board=mid iters=%d\n", iters);
 
-    // Warm the branch predictors and the static arena before timing anything.
     for (int i = 0; i < 1000; ++i) {
         tb::generateMoves(b, tb::PIECE_T, &ml);
         sink += static_cast<unsigned>(ml.count);
@@ -281,7 +258,7 @@ int runMovegenBench(int iters) {
         const auto t0 = std::chrono::steady_clock::now();
         for (int i = 0; i < iters; ++i) {
             tb::generateMoves(b, p, &ml);
-            sink += static_cast<unsigned>(ml.count);   // keep the call alive
+            sink += static_cast<unsigned>(ml.count);
         }
         const auto t1 = std::chrono::steady_clock::now();
 
@@ -301,13 +278,10 @@ int runMovegenBench(int iters) {
     return 0;
 }
 
-} // namespace
+}
 
 namespace {
 
-// Every numeric flag on this CLI goes through one of these two. std::atoi maps "abc" to 0 and
-// accepts "-5"; either runs a degenerate loop and prints a stats block that is shape-identical
-// to a real result, and a scripted weight sweep would record that as data. Reject it loudly.
 long parseIntArg(const char* flag, const char* text, long lo, long hi) {
     char* end = nullptr;
     const long v = std::strtol(text, &end, 10);
@@ -318,7 +292,6 @@ long parseIntArg(const char* flag, const char* text, long lo, long hi) {
     return v;
 }
 
-// The !(v > 0.0f) form also rejects a NaN, which every plain comparison would quietly accept.
 float parsePositiveFloatArg(const char* flag, const char* text) {
     char* end = nullptr;
     const float v = std::strtof(text, &end);
@@ -335,7 +308,6 @@ void listWeightNames(std::FILE* out) {
     std::fprintf(out, "\n");
 }
 
-// Parses "name=value" or "name=value,name=value,...". Returns false on the first bad token.
 bool applyWeightSpec(tb::Weights& w, const char* spec) {
     const std::string s(spec);
     size_t start = 0;
@@ -350,8 +322,7 @@ bool applyWeightSpec(tb::Weights& w, const char* spec) {
                 return false;
             }
             const std::string name = tok.substr(0, eq);
-            // strtof with a discarded end pointer would read "tSlotCount=abc" as 0 and run a
-            // sweep at a weight nobody asked for, so the whole value has to parse.
+
             const char* valueText = tok.c_str() + eq + 1;
             char* end = nullptr;
             const float value = std::strtof(valueText, &end);
@@ -372,9 +343,6 @@ bool applyWeightSpec(tb::Weights& w, const char* spec) {
     return true;
 }
 
-// --versus: two Games in one process, stepping alternately (equal PPS). Attack cancels the
-// sender's own pending queue first (inside Game); only the surplus is queued on the opponent,
-// entering after the opponent's next lock. First top-out loses; both alive at the cap = draw.
 static int runVersusMode(uint32_t seedA, uint32_t seedB, int maxPieces,
                          const tb::SearchConfig& cfgA, const tb::SearchConfig& cfgB,
                          float messiness, bool stats, bool json) {
@@ -387,7 +355,7 @@ static int runVersusMode(uint32_t seedA, uint32_t seedB, int maxPieces,
     int rounds = 0;
     while (rounds < maxPieces) {
         ++rounds;
-        // A steps; its surplus attack (after cancelling its own queue) goes to B.
+
         int pending = A.pendingGarbage();
         uint32_t before = A.attackSent();
         A.stepPiece();
@@ -420,11 +388,8 @@ static int runVersusMode(uint32_t seedA, uint32_t seedB, int maxPieces,
     return 0;
 }
 
-} // namespace
+}
 
-// Plan 1's random-play harness, moved verbatim out of main() and otherwise untouched. It is the
-// only mode that does not call search(), which is exactly what makes it useful when the search
-// itself is the thing under suspicion.
 static int runRandomMode(uint32_t seed, int pieces, bool doPrint, bool doStats) {
     tb::Bag bag(seed);
     uint32_t rngState = (seed == 0u) ? 0x9E3779B9u : seed;
@@ -443,7 +408,6 @@ static int runRandomMode(uint32_t seed, int pieces, bool doPrint, bool doStats) 
         for (int i = 0; i < tb::PREVIEW_LEN; ++i) queue[i] = queue[i + 1];
         queue[tb::PREVIEW_LEN] = bag.next();
 
-        // One hold swap per piece, taken about one time in eight.
         if ((tb::xorshift32(rngState) & 7u) == 0u) {
             if (hold == tb::PIECE_NONE) {
                 hold = current;
@@ -457,7 +421,6 @@ static int runRandomMode(uint32_t seed, int pieces, bool doPrint, bool doStats) 
             }
         }
 
-        // Pick a random legal (rotation, column), then hard-drop it.
         int rot = 0;
         int x = 0;
         int y = 0;
@@ -490,7 +453,7 @@ static int runRandomMode(uint32_t seed, int pieces, bool doPrint, bool doStats) 
 
         tb::ClearInfo info;
         info.lines = static_cast<uint8_t>(cleared);
-        info.spin = tb::SPIN_NONE;   // random play never classifies a spin
+        info.spin = tb::SPIN_NONE;
         info.perfectClear = (cleared > 0) && tb::isEmpty(board);
 
         st.attack += static_cast<uint32_t>(tb::computeAttack(info, b2bCount, combo));
@@ -510,11 +473,7 @@ static int runRandomMode(uint32_t seed, int pieces, bool doPrint, bool doStats) 
     }
 
     if (doStats) {
-        // Labels and column layout are the shared contract's, verbatim, so the
-        // search milestone can replace this harness without changing the
-        // meaning of any downstream grep. The contract's seventh line,
-        // "search ms  p50 ... p99 ...", is absent on purpose: this milestone
-        // has no search to time. Plan 3 appends it in the same label column.
+
         const double tspinRate =
             st.pieces ? 100.0 * static_cast<double>(st.tspins) / static_cast<double>(st.pieces)
                       : 0.0;
@@ -526,14 +485,11 @@ static int runRandomMode(uint32_t seed, int pieces, bool doPrint, bool doStats) 
         std::printf("%-12s%5u\n", "top-outs", st.topouts);
     }
 
-
     return 0;
 }
 
 int main(int argc, char** argv) {
-    // PLAN 2'S DISPATCH, UNCHANGED AND STILL THE FIRST STATEMENT IN main(). --movegen is the
-    // PRD 10 gate; it must keep working forever. It never touches the search, which is exactly
-    // why it stays trustworthy when the search is the thing under suspicion.
+
     for (int i = 1; i < argc; ++i) {
         if (std::strcmp(argv[i], "--movegen") == 0) {
             const char* which = (i + 1 < argc) ? argv[i + 1] : "all";
@@ -575,7 +531,7 @@ int main(int argc, char** argv) {
         else if (!std::strcmp(a, "--budget"))
             cfg.timeBudgetMs = parsePositiveFloatArg("--budget", need("--budget"));
         else if (!std::strcmp(a, "--nodes")) {
-            // Deterministic horizon: N scored children per search, clock effectively off.
+
             cfg.nodeBudget   = parseIntArg("--nodes", need("--nodes"), 1, 2147483647L);
             cfg.timeBudgetMs = 1e9f;
         }
@@ -584,14 +540,14 @@ int main(int argc, char** argv) {
         else if (!std::strcmp(a, "--dupes"))   cfg.measureDupes = true;
         else if (!std::strcmp(a, "--json"))    json = true;
         else if (!std::strcmp(a, "--list-weights")) {
-            // name=default per line; tools/tune.py and tools/bench.py read the table from here
+
             const tb::Weights d = tb::defaultWeights();
             for (int k = 0; k < tb::weightNameCount(); ++k)
                 std::printf("%s=%g\n", tb::weightName(k), static_cast<double>(tb::weightValue(d, k)));
             return 0;
         }
         else if (!std::strcmp(a, "--garbage")) {
-            // "L/P": queue L garbage lines every P pieces.
+
             const char* spec = need("--garbage");
             const char* slash = std::strchr(spec, '/');
             if (slash == nullptr) { std::fprintf(stderr, "--garbage wants L/P: %s\n", spec); return 2; }
@@ -625,12 +581,11 @@ int main(int argc, char** argv) {
         }
     }
 
-    // PLAN 1'S MODE, still reachable and still meaning what it meant.
     if (randomMode) return runRandomMode(seed, pieces, print, stats);
 
     if (versusSpec != nullptr) {
         tb::SearchConfig cfgB = cfg;
-        cfgB.weights = tb::defaultWeights();   // B starts clean; --weights only shapes A
+        cfgB.weights = tb::defaultWeights();
         if (versusSpec[0] != '\0' && !applyWeightSpec(cfgB.weights, versusSpec)) return 2;
         if (nodes2 > 0) { cfgB.nodeBudget = nodes2; cfgB.timeBudgetMs = 1000000000.0f; }
         if (width2 > 0) cfgB.beamWidth = width2;
@@ -675,7 +630,7 @@ int main(int argc, char** argv) {
             hSumSq += static_cast<double>(h) * static_cast<double>(h);
             if (h < hMin) hMin = h;
             if (h > hMax) hMax = h;
-            // plan 1's printBoard, reused: same "--- piece N ---" header, same frame.
+
             if (print) printBoard(game.board(), static_cast<unsigned>(basePieces + game.piecesPlaced()));
         }
         if (game.toppedOut()) {
@@ -734,7 +689,6 @@ int main(int argc, char** argv) {
         std::printf("%-12s%5.2f\n", "height sd",  std::sqrt(hVar));
     }
 
-    // Machine-readable summary for tools/bench.py and tools/tune.py. One object, one line.
     if (json) {
         std::printf("{\"pieces\":%u,\"lines\":%u,\"attack\":%u,\"spins\":%u,\"maxB2b\":%u,"
                     "\"surge\":%u,\"topouts\":%u,\"garbage\":%u,\"p50\":%.3f,\"p99\":%.3f,"

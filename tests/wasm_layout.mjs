@@ -1,5 +1,3 @@
-// Layout export contract check. PRD section 12 names struct-layout mismatch as a
-// silent-corruption risk; this is the assertion that catches it.
 import assert from 'node:assert/strict';
 import createBotModule from '../dist/bot.js';
 
@@ -26,7 +24,6 @@ for (const f of EXPECTED_FIELDS) {
 assert.equal(Object.keys(layout).length, EXPECTED_FIELDS.length,
   `layout has ${Object.keys(layout).length} entries, expected ${EXPECTED_FIELDS.length}`);
 
-// Fields named "event.*" are offsets WITHIN one Event, not within Snapshot.
 let max = 0;
 for (const [name, f] of Object.entries(layout)) {
   if (name.startsWith('event.')) continue;

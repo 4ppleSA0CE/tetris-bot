@@ -1,4 +1,3 @@
-// PRD section 11: "/dist bundle under 500KB".
 import assert from 'node:assert/strict';
 import { readdirSync, statSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';

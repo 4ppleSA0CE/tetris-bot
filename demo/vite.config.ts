@@ -7,12 +7,11 @@ const repoRoot = fileURLToPath(new URL('..', import.meta.url));
 export default defineConfig({
   root: here,
   base: './',
-  // es2022 for top-level await and class private fields, both of which the
-  // wrapper and the Emscripten glue rely on.
+
   esbuild: { target: 'es2022' },
   build: {
     target: 'es2022',
-    outDir: 'dist',        // demo/dist — gitignored by the rule added below
+    outDir: 'dist',
     emptyOutDir: true,
     rollupOptions: {
       input: {
@@ -21,6 +20,6 @@ export default defineConfig({
       },
     },
   },
-  // The demo imports ../js and ../renderers, which live outside the Vite root.
+
   server: { fs: { allow: [repoRoot] } },
 });

@@ -1,5 +1,3 @@
-// A real C++ event, drained through the real SnapshotView, painted by the real
-// renderer. PRD section 5.1: this is the one path callouts cross on.
 import assert from 'node:assert/strict';
 import { installDom, makeCanvas, TEST_VARS } from './fake_canvas.mjs';
 import { createTetrisBot, loadBotModule } from '../js/index.js';
@@ -11,7 +9,6 @@ const { mod } = await loadBotModule();
 setPieceCells(JSON.parse(mod.getPieceCells()));
 const { createRenderer } = await import('../renderers/canvas-mono.js');
 
-// Spin callouts are prefixed with the letter of the piece that locked (PIECE_LOCK param).
 const EXPECTED = {
   [EventType.TETRIS]: 'TETRIS',
   [EventType.TSPIN_MINI]: '-SPIN MINI',
@@ -34,10 +31,6 @@ let sawLock = false;
 let lockPiece = -1;
 let b2bChecks = 0;
 
-// Run PAST the first shout. B2B_EXTEND only fires on the SECOND difficult clear,
-// and the first difficult clear is itself a tetris or t-spin - so a loop that
-// stops at the first shout can never reach a single B2B_EXTEND, and the param
-// assertion below would be dead code that always reports 0 checks.
 const WANT_B2B_CHECKS = 5;
 
 for (let f = 0; f < 36000; f++) {
@@ -45,13 +38,12 @@ for (let f = 0; f < 36000; f++) {
   bot.tick(t);
   const s = bot.snapshot();
 
-  // The ring is 8 deep and eventCount must never claim more than that.
   assert.ok(s.events.length <= 8, `eventCount ${s.events.length} exceeds the 8-slot ring`);
 
   for (const ev of s.events) {
     assert.ok(ev.type >= 0 && ev.type <= 10, `event type ${ev.type} is out of range`);
     if (ev.type === EventType.PIECE_LOCK) {
-      // param is the PieceType that locked, NOT the line count.
+
       assert.ok(ev.param >= 0 && ev.param <= 6,
         `PIECE_LOCK param ${ev.param} is not a PieceType — the param convention drifted`);
       sawLock = true;
@@ -61,8 +53,7 @@ for (let f = 0; f < 36000; f++) {
         `B2B_EXTEND param ${ev.param} != snapshot b2bCount ${s.b2bCount}`);
       b2bChecks++;
     }
-    // Exactly one clear event per placement: LINE_CLEAR never rides along with
-    // TETRIS or a TSPIN_*.
+
     if (ev.type === EventType.LINE_CLEAR) {
       const others = s.events.filter((e) => e.type >= EventType.TETRIS && e.type <= EventType.TSPIN_TRIPLE);
       assert.equal(others.length, 0,

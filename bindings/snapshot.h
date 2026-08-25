@@ -4,13 +4,10 @@
 
 namespace tb {
 
-// 40 rows x 10 columns. Kept here rather than pulled from core/types.h so that
-// snapshot.h stays a standalone description of the wasm boundary.
 constexpr int BOARD_CELLS = 40 * 10;
-/** cellPiece entry for a cell nothing has locked into. */
+
 constexpr uint8_t CELL_EMPTY = 0xFF;
 
-// Contract: bindings/snapshot.h (PRD section 5.1, AMENDED).
 enum EventType : uint8_t {
     EV_PIECE_LOCK = 0, EV_LINE_CLEAR = 1, EV_TETRIS = 2,
     EV_TSPIN_MINI = 3, EV_TSPIN_SINGLE = 4, EV_TSPIN_DOUBLE = 5, EV_TSPIN_TRIPLE = 6,
@@ -23,53 +20,36 @@ struct Event {
     uint16_t frame;
 };
 
-// Written into by BotInstance, read by TypeScript through zero-copy views.
-// FIELD ORDER IS THE CONTRACT. Do not reorder, do not insert, do not pack.
-// Natural alignment already packs this to 156 bytes; #pragma pack would only
-// make the DataView reads unaligned and slower on wasm32.
 struct Snapshot {
     uint32_t frame;
-    uint16_t rows[40];       // board bitmask, row 0 = bottom, bit i = column i
-    int8_t   activePiece;    // 0-6, -1 = none
-    int8_t   activeRot;      // 0-3
+    uint16_t rows[40];
+    int8_t   activePiece;
+    int8_t   activeRot;
     int8_t   activeX;
     int8_t   activeY;
     int8_t   ghostY;
-    uint8_t  pendingSpin;    // 0 none, 1 mini, 2 full - known before the piece locks
-    // 0-255 along the current movement path. EXPORTED FOR HOSTS, and deliberately
-    // not read by renderers/canvas-mono.ts: the tempo dilation of PRD 7.2 happens
-    // in C++ by stretching how long each path state is displayed, and the renderer
-    // sub-interpolates on its own frame clock. A host that wants to drive its own
-    // effect off the placement's progress reads this; the shipped renderer does not.
+    uint8_t  pendingSpin;
+
     uint8_t  pathProgress;
-    int8_t   holdPiece;      // -1 = empty
+    int8_t   holdPiece;
     int8_t   queue[5];
-    uint8_t  eventCount;     // events written this tick
+    uint8_t  eventCount;
     Event    events[8];
     uint32_t piecesPlaced;
     uint32_t linesCleared;
     uint32_t attackSent;
     uint16_t b2bCount;
     uint16_t comboCount;
-    float    pps;            // measured, not configured
-    uint8_t  state;          // 0 idle, 1 playing, 2 topped out
-    // Which PIECE filled each cell, for per-piece colouring. 0-6, or CELL_EMPTY.
-    // Indexed [y * 10 + x], same coordinate convention as rows: y=0 is the bottom.
-    //
-    // rows[] is a bitmask and carries no piece identity, so a renderer cannot tell
-    // that a locked cell was an S. This grid is maintained by BotInstance rather
-    // than by core/: the colour of a settled cell is a presentation concern, and
-    // core's Board stays a pure bitmask because that is what makes the search fast.
+    float    pps;
+    uint8_t  state;
+
     uint8_t  cellPiece[BOARD_CELLS];
-    // Incoming garbage lines queued but not yet risen (plan 10 amendment). Appended after
-    // cellPiece so no existing field moves; the trailing padding absorbs the byte.
+
     uint8_t  pendingGarbage;
 };
 
 constexpr int SNAPSHOT_MAX_EVENTS = 8;
 
-// Tripwires. TypeScript never depends on these numbers - it reads the layout at
-// runtime - but an accidental layout change should be loud at compile time.
 static_assert(sizeof(Event) == 4,               "Event layout changed");
 static_assert(alignof(Event) == 2,              "Event alignment changed");
 static_assert(sizeof(Snapshot) == 556,          "Snapshot layout changed");
@@ -82,4 +62,4 @@ static_assert(offsetof(Snapshot, state) == 152, "Snapshot.state moved");
 static_assert(offsetof(Snapshot, cellPiece) == 153, "Snapshot.cellPiece moved");
 static_assert(offsetof(Snapshot, pendingGarbage) == 553, "Snapshot.pendingGarbage moved");
 
-} // namespace tb
+}

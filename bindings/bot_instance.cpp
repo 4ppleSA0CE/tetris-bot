@@ -11,10 +11,6 @@
 
 namespace tb {
 
-// Read a weight by core/eval.h's index. The NAMES and the ORDER are owned by
-// core/eval.cpp's kWeightTable - this switch only has to agree with it, and
-// test_weight_table() in tests/tests.cpp asserts that it does by writing through
-// setWeightByName(w, weightName(i), ...) and reading back through this.
 float* bindingsWeightSlot(Weights& w, int index) {
     if (index < 0 || index >= weightNameCount()) return nullptr;
     switch (index) {
@@ -44,24 +40,15 @@ float* bindingsWeightSlot(Weights& w, int index) {
 }
 
 namespace {
-// SPAWN_X and SPAWN_Y are tb::SPAWN_X / tb::SPAWN_Y from core/movegen.h, which
-// bot_instance.h already includes. DO NOT redeclare them here - an unnamed
-// namespace nested in `tb` is `using`-ed into `tb`, so a local copy makes every
-// unqualified use below ambiguous and the file stops compiling.
-//
-// A single tick can straddle several pieces (a long frame gap, or a high pps).
-// Beyond this many pieces in one tick we resync the clock instead of catching
-// up - the tab was almost certainly backgrounded.
+
 constexpr int MAX_PIECES_PER_TICK = 64;
-}  // namespace
+}
 
 BotInstance::BotInstance(uint32_t seed, float pps, int searchDepth, int beamWidth)
     : bag_(seed), seed_(seed), pps_(pps) {
     cfg_.depth     = searchDepth;
     cfg_.beamWidth = beamWidth;
-    // Plan by node count, not wall clock. A 4.5 ms wall-clock budget starves the search
-    // to ~1000 nodes whenever the host machine is loaded, which collapses play quality;
-    // 4500 nodes is the same work regardless of load (~4.5 ms of idle-machine wasm).
+
     cfg_.nodeBudget   = 4500;
     cfg_.timeBudgetMs = 1.0e9f;
     reset(seed);
@@ -74,8 +61,6 @@ void BotInstance::setPPS(float pps) {
     if (planValid_) recomputeTempo();
 }
 
-// weightName() returns "" for an out-of-range index and setWeightByName()
-// rejects "", so a bad index from JS is a no-op rather than a stray write.
 void BotInstance::setWeight(int index, float value) {
     setWeightByName(cfg_.weights, weightName(index), value);
 }
@@ -119,8 +104,7 @@ void BotInstance::queueGarbage(int lines) {
     if (lines > 20) lines = 20;
     pendingGarbage_ = pendingGarbage_ > 255 - lines ? 255 : pendingGarbage_ + lines;
     if (planValid_) {
-        // Rewind plan()'s hold swap (and bag draw), then replan with the new pending
-        // lines -- exactly the state core Game searches from, so parity holds.
+
         hold_    = prePlanHold_;
         current_ = prePlanCurrent_;
         for (int i = 0; i < PREVIEW_LEN; ++i) queue_[i] = prePlanQueue_[i];
@@ -139,7 +123,7 @@ void BotInstance::topOut() {
 }
 
 void BotInstance::pushEvent(uint8_t type, uint8_t param) {
-    if (snap_.eventCount >= SNAPSHOT_MAX_EVENTS) return;   // drop, never overwrite
+    if (snap_.eventCount >= SNAPSHOT_MAX_EVENTS) return;
     Event& e = snap_.events[snap_.eventCount++];
     e.type  = type;
     e.param = param;
@@ -153,9 +137,7 @@ void BotInstance::buildPathStates() {
     pathX_[0] = static_cast<int8_t>(x);
     pathY_[0] = static_cast<int8_t>(y);
     pathR_[0] = static_cast<int8_t>(r);
-    // Trailing soft drops are one hard drop: the piece hovers through its shifts and
-    // turns, then lands in a single step. Soft drops only survive when a tuck or a
-    // spin follows them.
+
     int tail = plan_.pathLen;
     while (tail > 0 && plan_.path[tail - 1] == ACT_SOFT_DROP) --tail;
     pathSteps_ = tail < plan_.pathLen ? tail + 1 : tail;
@@ -193,10 +175,6 @@ void BotInstance::buildPathStates() {
     pathY_[pathSteps_] = plan_.y;
     pathR_[pathSteps_] = static_cast<int8_t>(plan_.rot);
 
-    // Visual-gravity clearance: at state i the drawn piece may drift down to the
-    // highest ghost row of any REMAINING state, so it slides over every upcoming
-    // column instead of clipping into one it still has to cross. Tuck states are
-    // unaffected -- their own path y is below this clamp and wins in writeActive.
     pathFloor_[pathSteps_] = plan_.y;
     for (int i = pathSteps_ - 1; i >= 0; --i) {
         const int8_t own = static_cast<int8_t>(
@@ -248,7 +226,7 @@ void BotInstance::plan() {
 }
 
 void BotInstance::lockCurrent() {
-    // Paint the colour grid before the board changes under it.
+
     {
         const Cell* cs = pieceCells(current_, plan_.rot);
         for (int i = 0; i < 4; ++i) {
@@ -262,10 +240,6 @@ void BotInstance::lockCurrent() {
 
     lockPiece(board_, current_, plan_.rot, plan_.x, plan_.y);
 
-    // Mirror clearLines' compaction onto the colour grid. This MUST run after
-    // lockPiece and before clearLines: clearLines is what destroys the evidence of
-    // which rows were full, and the two must agree cell for cell or the board is
-    // painted in the wrong colours from here on.
     {
         int write = 0;
         for (int read = 0; read < BOARD_H; ++read) {
@@ -293,17 +267,6 @@ void BotInstance::lockCurrent() {
     linesCleared_ += static_cast<uint32_t>(lines);
     piecesPlaced_ += 1;
 
-    // EVENT CONTRACT, and core/game.cpp's Game::stepPiece must match it:
-    //   EV_PIECE_LOCK.param is the PieceType (0..6) that just locked. It is not
-    //     recoverable any other way once current_ advances; the line count is
-    //     already on the clear event.
-    //   EXACTLY ONE of EV_LINE_CLEAR / EV_TETRIS / EV_TSPIN_* fires per
-    //     line-clearing placement - they are mutually exclusive, never stacked.
-    //     The renderer's calloutText() returns null for EV_LINE_CLEAR, so a
-    //     tetris that also emitted EV_LINE_CLEAR would be a silently swallowed
-    //     event, not a visible bug.
-    //   EV_B2B_EXTEND fires from the SECOND difficult clear onward, with
-    //     param == b2bCount. "BACK-TO-BACK x1" is not a back-to-back.
     pushEvent(EV_PIECE_LOCK, static_cast<uint8_t>(current_));
     if (lines > 0) {
         if (plan_.spin == SPIN_MINI) {
@@ -344,10 +307,6 @@ void BotInstance::lockCurrent() {
     planValid_ = false;
     snap_.pendingSpin = 0;
 
-    // Incoming garbage, core/game.cpp's exact semantics: this piece's attack cancels
-    // pending lines first, the remainder rises now, one row at a time, hole redrawn per
-    // row with probability 0.05 from the same seed-derived RNG. The colour grid shifts
-    // with the board; garbage cells get id 7 (a grey the palette reserves for garbage).
     if (pendingGarbage_ > 0) {
         pendingGarbage_ -= atk;
         if (pendingGarbage_ < 0) pendingGarbage_ = 0;
@@ -377,32 +336,21 @@ void BotInstance::lockCurrent() {
     }
     writeStats();
 
-    // Lock-out, copied verbatim in intent from core/game.cpp's Game::stepPiece.
-    // WITHOUT THIS the browser loop and the CLI loop disagree about when a run is
-    // over: Game ends it the moment anything survives at or above the top of the
-    // visible field, BotInstance would keep playing until the spawn cell itself is
-    // blocked (row 21). PRD section 11 criterion 3 is measured on Game, so the
-    // browser must not be the more permissive of the two.
     for (int y = VISIBLE_H; y < BOARD_H; ++y) {
         if (board_.rows[y] != 0) { topOut(); return; }
     }
 }
 
 void BotInstance::writeActive(double nowMs) {
-    // Player-rhythm playback: the piece starts working the moment it spawns -- DAS/ARR
-    // sideways cadence up top while gravity drifts it slowly downward -- then the
-    // hard-drop tail is a SHARP fast fall, and the placed piece rests on the stack
-    // until the next spawn. The contrast between the slow drift and the fast fall is
-    // what reads as hover...slam rather than one long soft drop. Natural speed always;
-    // the route is only compressed when it cannot fit the interval (high PPS).
+
     constexpr double SETTLE_AT = 0.90;
-    constexpr double GRAV_MS = 50.0;   // visual gravity: ms per cell of downward drift
+    constexpr double GRAV_MS = 50.0;
     constexpr double ROT_MS  = 30.0;
     constexpr double TAP_MS  = 40.0;
     constexpr double DAS_MS  = 90.0;
     constexpr double ARR_MS  = 15.0;
-    constexpr double SOFT_MS = 25.0;   // per cell, surviving tuck/spin soft drops
-    constexpr double HARD_MS = 10.0;   // per cell of the final fall
+    constexpr double SOFT_MS = 25.0;
+    constexpr double HARD_MS = 10.0;
 
     double u = pieceMs_ > 0.0 ? (nowMs - pieceStartMs_) / pieceMs_ : 1.0;
     u = std::clamp(u, 0.0, 1.0);
@@ -424,7 +372,7 @@ void BotInstance::writeActive(double nowMs) {
             if (rotated)      d = ROT_MS;
             else if (dy == 1) d = SOFT_MS;
             else if (dy > 1)  d = dy * HARD_MS;
-            else              d = 0.0;   // no-op action, state unchanged
+            else              d = 0.0;
         }
         dur[i] = d;
         total += d;
@@ -446,8 +394,7 @@ void BotInstance::writeActive(double nowMs) {
     snap_.activeY     = pathY_[k];
     snap_.activeRot   = pathR_[k];
     if (k < pathSteps_) {
-        // The fall is drawn cell by cell; shifts and rotations stay snapped to the
-        // departure state until their duration elapses.
+
         const int fall = pathY_[k] - pathY_[k + 1];
         if (fall > 1 && dur[k] * scale > 0.0) {
             const double frac = (elapsed - acc) / (dur[k] * scale);
@@ -456,9 +403,6 @@ void BotInstance::writeActive(double nowMs) {
         }
     }
 
-    // Gravity drift: the piece sinks one cell every GRAV_MS while it works, clamped
-    // to the clearance floor for the rest of its route. Tucks and kicks sit below
-    // the clamp, so their exact path position wins the min().
     {
         const int gravCell = static_cast<int>(SPAWN_Y) -
                              static_cast<int>(elapsed / GRAV_MS);
@@ -483,7 +427,7 @@ void BotInstance::writeStats() {
 }
 
 void BotInstance::tick(double nowMs) {
-    snap_.eventCount = 0;          // events are per-tick; the renderer drains every frame
+    snap_.eventCount = 0;
     snap_.frame += 1;
     lastNowMs_ = nowMs;
 
@@ -515,4 +459,4 @@ void BotInstance::tick(double nowMs) {
     snap_.state = 1;
 }
 
-} // namespace tb
+}

@@ -1,14 +1,8 @@
 #!/usr/bin/env python3
-"""Paired benchmark: the same seeds for a candidate and a baseline, attack per piece with CI.
-
-  python3 tools/bench.py --seeds 8 --pieces 3000 --weights "wastedT=-100" --baseline ""
-  python3 tools/bench.py --garbage 4/16            # survival under pressure, defaults only
-"""
 import argparse, json, statistics, subprocess, sys
 from concurrent.futures import ThreadPoolExecutor
 
-BIN = './build/tetris_bot'   # overridable with --bin for cross-binary A/B
-
+BIN = './build/tetris_bot'
 
 def run(weights, seed, pieces, garbage, nodes=0, bin_=None):
     cmd = [bin_ or BIN, '--json', '--seed', str(seed), '--pieces', str(pieces)]
@@ -21,7 +15,6 @@ def run(weights, seed, pieces, garbage, nodes=0, bin_=None):
     out = subprocess.run(cmd, capture_output=True, text=True, check=True).stdout
     return json.loads(out.strip().splitlines()[-1])
 
-
 def summarize(rows):
     app = [r['attack'] / r['pieces'] for r in rows]
     n = len(app)
@@ -29,7 +22,6 @@ def summarize(rows):
     ci = 1.96 * statistics.stdev(app) / n ** 0.5 if n > 1 else 0.0
     return dict(median=statistics.median(app), mean=mean, ci=ci,
                 topouts=sum(r['topouts'] for r in rows), app=app)
-
 
 def main():
     ap = argparse.ArgumentParser()
@@ -46,8 +38,7 @@ def main():
     a = ap.parse_args()
 
     seeds = list(range(a.seed0, a.seed0 + a.seeds))
-    # Interleave candidate and baseline per seed: ambient load drift (thermal, background
-    # tasks) then lands on both sides, not on whichever block ran second.
+
     jobs = []
     for s in seeds:
         jobs.append(('cand', s))
@@ -78,7 +69,6 @@ def main():
         dci = 1.96 * statistics.stdev(d) / len(d) ** 0.5 if len(d) > 1 else 0.0
         print(f"paired diff: {statistics.fmean(d):+.4f} +- {dci:.4f}  "
               f"top-outs {cs['topouts']} vs {bs['topouts']}")
-
 
 if __name__ == '__main__':
     main()

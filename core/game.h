@@ -6,11 +6,6 @@
 
 namespace tb {
 
-// Game's own event log. /core must never include /bindings (PRD 3), so this enum is declared
-// here; its numeric values match bindings/snapshot.h's EventType so a consumer COULD map them
-// one-to-one. Note that plan 4's BotInstance does not: it drives search/lockPiece itself so it
-// can animate Placement::path, and it builds its own Event list with a frame number GameEvent
-// has no way to supply. This log exists for the native CLI and for test_game_steps.
 enum GameEventType : uint8_t {
     GEV_PIECE_LOCK = 0, GEV_LINE_CLEAR = 1, GEV_TETRIS = 2,
     GEV_TSPIN_MINI = 3, GEV_TSPIN_SINGLE = 4, GEV_TSPIN_DOUBLE = 5, GEV_TSPIN_TRIPLE = 6,
@@ -28,11 +23,8 @@ class Game {
 public:
     Game(uint32_t seed, const SearchConfig& cfg);
     void reset(uint32_t seed);
-    void stepPiece();          // search + apply one placement, fires events
+    void stepPiece();
 
-    // Incoming garbage. Queued lines enter after the next lock, minus whatever attack that
-    // lock sends (TETR.IO cancelling). Each burst draws one hole column; every further row
-    // redraws it with probability `messiness` (TETR.IO's default 0.05). Deterministic per seed.
     void     queueGarbage(int lines)        { pendingGarbage_ += lines; }
     void     setMessiness(float m)          { messiness_ = m; }
     uint32_t garbageReceived()        const { return garbageReceived_; }
@@ -47,8 +39,6 @@ public:
     uint16_t     b2bCount()     const { return b2bCount_; }
     uint16_t     comboCount()   const { return comboCount_; }
 
-    // Additive accessors. The shared contract forbids renaming its members, not adding new
-    // ones; plan 4 needs these to build the Snapshot and the CLI needs them for --stats.
     uint16_t         maxB2b()        const { return maxB2b_; }
     uint32_t         tSpinCount()    const { return tSpinCount_; }
     float            lastSearchMs()  const { return lastSearchMs_; }
@@ -57,7 +47,7 @@ public:
     long             lastSearchBeamSlots() const { return lastSearchBeamSlots_; }
     PieceType        currentPiece()  const { return current_; }
     PieceType        holdPiece()     const { return hold_; }
-    const PieceType* queue()         const { return queue_; }   // PREVIEW_LEN entries
+    const PieceType* queue()         const { return queue_; }
     const Placement& lastPlacement() const { return lastPlacement_; }
     bool             lastUsedHold()  const { return lastUsedHold_; }
     SpinKind         lastSpin()      const { return lastPlacement_.spin; }
@@ -98,4 +88,4 @@ private:
     float        messiness_ = 0.05f;
 };
 
-} // namespace tb
+}

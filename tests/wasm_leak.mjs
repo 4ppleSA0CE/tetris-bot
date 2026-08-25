@@ -1,22 +1,11 @@
-// PRD section 11: "1,000 create/destroy cycles leak no memory".
-// Four independent signals, because any one alone can lie:
-//   1. botLiveCount()  - did C++ actually drop the instance?
-//   2. _sbrk(0)        - did dlmalloc ask the system for more pages?
-//   3. heap byteLength - did the wasm memory grow?
-//   4. probe malloc    - did the free list come back to the same shape?
-// TOLERANCE: after the warm-up, all four are EXACT. Zero bytes of drift, and the
-// probe allocation must return the identical address. A fragmentation leak that
-// dlmalloc satisfies from pages it already owns moves signal 4 and nothing else,
-// which is why signal 4 is here.
 import assert from 'node:assert/strict';
 import createBotModule from '../dist/bot.js';
 
 const M = await createBotModule();
 
-// Shallow search: this test measures instance lifetime, not search throughput.
 const mk = () => M.botCreate(42, 5, 2, 8);
 
-for (let i = 0; i < 50; i++) M.botDestroy(mk());   // warm the allocator
+for (let i = 0; i < 50; i++) M.botDestroy(mk());
 
 const live0 = M.botLiveCount();
 const brk0 = M._sbrk(0);

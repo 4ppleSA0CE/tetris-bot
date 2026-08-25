@@ -1,4 +1,3 @@
-// PRD section 6: visibilitychange -> pause ticking on hidden tabs.
 import assert from 'node:assert/strict';
 
 const listeners = new Map();
@@ -27,7 +26,6 @@ run(4000);
 assert.equal(bot.snapshot().piecesPlaced, visiblePieces,
   'simulation advanced while the tab was hidden');
 
-// The tab comes back 10 minutes later; rAF delivers one enormous timestamp.
 t += 600000;
 globalThis.document.visibilityState = 'visible';
 fire('visibilitychange');

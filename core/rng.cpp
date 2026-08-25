@@ -17,7 +17,7 @@ Bag::Bag(uint32_t seed) : state_(0), index_(0), pieces_{} {
 
 void Bag::reset(uint32_t seed) {
     state_ = (seed == 0u) ? 0x9E3779B9u : seed;
-    index_ = NUM_PIECES;   // forces a refill on the next draw
+    index_ = NUM_PIECES;
     for (int i = 0; i < NUM_PIECES; ++i)
         pieces_[i] = static_cast<PieceType>(i);
 }
@@ -25,7 +25,7 @@ void Bag::reset(uint32_t seed) {
 void Bag::refill() {
     for (int i = 0; i < NUM_PIECES; ++i)
         pieces_[i] = static_cast<PieceType>(i);
-    // Fisher-Yates, high index down to 1.
+
     for (int i = NUM_PIECES - 1; i > 0; --i) {
         const uint32_t j = xorshift32(state_) % static_cast<uint32_t>(i + 1);
         const PieceType tmp = pieces_[i];
@@ -42,4 +42,4 @@ PieceType Bag::next() {
     return pieces_[index_++];
 }
 
-} // namespace tb
+}

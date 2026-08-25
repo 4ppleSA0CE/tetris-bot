@@ -1,24 +1,13 @@
 #!/usr/bin/env python3
-"""Noisy cross-entropy weight tuner (Szita & Lorincz 2006; Thiery & Scherrer 2009).
-
-Every candidate in a generation plays the same seeds (common random numbers), redrawn each
-generation, in two regimes: solo and under --garbage. Fitness is lexicographic: fewer top-outs
-first, then more attack. attackDealt stays pinned at its default (the unit anchor). The search
-runs at the shipped time budget, or at --nodes N, a deterministic node count calibrated to it.
-
-  python3 tools/tune.py --gens 30 --pop 60 --elite 8 --pieces 1500 --workers 8
-"""
 import argparse, json, os, random, subprocess, sys
 from concurrent.futures import ThreadPoolExecutor
 
 BIN = './build/tetris_bot'
 PINNED = {'attackDealt'}
 
-
 def list_weights():
     out = subprocess.run([BIN, '--list-weights'], capture_output=True, text=True, check=True).stdout
     return {k: float(v) for k, v in (l.split('=') for l in out.split())}
-
 
 def run(weights, seed, pieces, garbage, nodes=0):
     cmd = [BIN, '--json', '--seed', str(seed), '--pieces', str(pieces), '--weights', weights]
@@ -29,7 +18,6 @@ def run(weights, seed, pieces, garbage, nodes=0):
     out = subprocess.run(cmd, capture_output=True, text=True, check=True).stdout
     return json.loads(out.strip().splitlines()[-1])
 
-
 def run_vs(wa, wb, seed_a, seed_b, pieces, nodes):
     cmd = [BIN, '--versus', wb, '--weights', wa, '--seed', str(seed_a),
            '--seed2', str(seed_b), '--pieces', str(pieces), '--json']
@@ -38,10 +26,8 @@ def run_vs(wa, wb, seed_a, seed_b, pieces, nodes):
     out = subprocess.run(cmd, capture_output=True, text=True, check=True).stdout
     return json.loads(out.strip().splitlines()[-1])
 
-
 def fmt(names, vec):
     return ','.join(f'{n}={v:.1f}' for n, v in zip(names, vec))
-
 
 def main():
     ap = argparse.ArgumentParser()
@@ -83,13 +69,11 @@ def main():
 
     for gen in range(a.gens):
         pop = [[rng.gauss(m, s) for m, s in zip(mean, sigma)] for _ in range(a.pop)]
-        pop[0] = list(mean)                     # the incumbent always competes
+        pop[0] = list(mean)
         if a.duel:
             pairs = [(a.seed0 + gen * 1000 + 2 * p, a.seed0 + gen * 1000 + 2 * p + 1)
                      for p in range(a.duel)]
-            # Opponent pool: the compiled defaults plus the previous generation's mean.
-            # Two opponents break the single-lineage self-play overfit the plan-9 retune
-            # measured (healthy training curve, lost the held-out duel).
+
             pool = [''] if prev_mean is None else ['', prev_mean]
             solo_seed = a.seed0 + gen * 1000 + 900
             jobs = []
@@ -125,9 +109,7 @@ def main():
                 topo = sum(x[1] for x in chunk if x[0] == 'solo')
                 atk = sum(x[2] for x in chunk if x[0] == 'solo')
                 b2b = sum(x[3] for x in chunk if x[0] == 'solo')
-                # Lexicographic: fight parity, survival, attack efficiency (round 6),
-                # then CHAIN LENGTH (round 7 -- the tuner cannot want what it is not
-                # scored on), margin last.
+
                 fit.append((-score, topo, -atk, -b2b, -margin, score, atk, b2b, margin))
             prev_mean = fmt(names, mean)
             seeds = pairs
@@ -170,7 +152,6 @@ def main():
                            best=dict(weights=pop[best], fitness=fit[best]),
                            elites=[dict(weights=pop[i], fitness=fit[i]) for i in elite]), f)
     print('final:', fmt(names, mean))
-
 
 if __name__ == '__main__':
     main()

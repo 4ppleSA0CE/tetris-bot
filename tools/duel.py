@@ -1,16 +1,8 @@
 #!/usr/bin/env python3
-"""Paired duel runner: candidate A vs candidate B over mirrored seed pairs.
-
-Each pair plays two games with roles swapped (A takes B's seat and seeds), so seed luck and
-the first-mover slot cancel. Deterministic with --nodes; draws score half.
-
-  python3 tools/duel.py --a "" --b "wastedT=-50" --pairs 50 --pieces 2000 --nodes 5200 --workers 10
-"""
 import argparse, json, math, subprocess
 from concurrent.futures import ThreadPoolExecutor
 
 BIN = './build/tetris_bot'
-
 
 def game(wa, wb, seed_a, seed_b, pieces, nodes, nodes_b=0, shape_a=None, shape_b=None):
     cmd = [BIN, '--versus', wb, '--seed', str(seed_a), '--seed2', str(seed_b),
@@ -28,13 +20,11 @@ def game(wa, wb, seed_a, seed_b, pieces, nodes, nodes_b=0, shape_a=None, shape_b
     out = subprocess.run(cmd, capture_output=True, text=True, check=True).stdout
     return json.loads(out.strip().splitlines()[-1])
 
-
 def parse_shape(spec):
     if not spec:
         return None
     w, d = spec.split(',')
     return int(w), int(d)
-
 
 def main():
     ap = argparse.ArgumentParser()
@@ -54,15 +44,15 @@ def main():
     jobs = []
     for i in range(args.pairs):
         s1, s2 = args.seed0 + 2 * i, args.seed0 + 2 * i + 1
-        jobs.append((args.a, args.b, s1, s2, False))   # A in seat A
-        jobs.append((args.b, args.a, s1, s2, True))    # roles swapped, same seats/seeds
+        jobs.append((args.a, args.b, s1, s2, False))
+        jobs.append((args.b, args.a, s1, s2, True))
 
     def run(j):
         wa, wb, s1, s2, swapped = j
-        # The node budget follows the candidate across seats exactly like the weights do.
+
         na = args.nodes if not swapped else (args.nodes_b or args.nodes)
         nb = (args.nodes_b or args.nodes) if not swapped else args.nodes
-        # Beam shapes follow the candidates across seats exactly like weights and budgets.
+
         sa = parse_shape(args.shape_a if not swapped else args.shape_b)
         sb = parse_shape(args.shape_b if not swapped else args.shape_a)
         r = game(wa, wb, s1, s2, args.pieces, na, nb if nb != na else 0, sa, sb)
@@ -85,7 +75,6 @@ def main():
     rounds = sum(r['rounds'] for _, r in results) / n
     print(f"A: {W}W {L}L {D}D of {n}  score {score:.3f}  elo {elo:+.0f}  "
           f"LOS {los:.3f}  avg rounds {rounds:.0f}")
-
 
 if __name__ == '__main__':
     main()

@@ -1,6 +1,3 @@
-// A recording Canvas 2D context, so the renderer can be tested in Node.
-// Every drawing call is pushed to canvas.ops with the style state it ran under.
-
 export function installDom() {
   globalThis.devicePixelRatio = 1;
   globalThis.getComputedStyle = (el) => ({
@@ -67,7 +64,6 @@ export function makeCanvas(width, height, vars) {
   };
 }
 
-/** The eight properties from PRD section 7.1, as distinguishable sentinels. */
 export const TEST_VARS = {
   '--bot-bg': 'VAR_BG',
   '--bot-grid': 'VAR_GRID',
@@ -86,16 +82,14 @@ export const TEST_VARS = {
   '--bot-piece-z': 'VAR_PIECE_Z',
 };
 
-/** A hand-built Snapshot-shaped object; the renderer only reads, never mutates. */
 export function fakeSnapshot(overrides = {}) {
   const rows = new Uint16Array(40);
-  rows[0] = 0b0111111111;   // bottom row, one gap at column 9
+  rows[0] = 0b0111111111;
   rows[1] = 0b0000000011;
-  // Which piece locked into each cell, parallel to rows. Two distinct pieces so a
-  // test can tell the board is painted per piece and not with one flat colour.
+
   const cellPiece = new Uint8Array(400).fill(255);
-  for (let x = 0; x < 9; x++) cellPiece[0 * 10 + x] = 0;   // I
-  for (let x = 0; x < 2; x++) cellPiece[1 * 10 + x] = 6;   // Z
+  for (let x = 0; x < 9; x++) cellPiece[0 * 10 + x] = 0;
+  for (let x = 0; x < 2; x++) cellPiece[1 * 10 + x] = 6;
   return {
     frame: 1, rows, cellPiece,
     activePiece: 5, activeRot: 0, activeX: 4, activeY: 12, ghostY: 3,

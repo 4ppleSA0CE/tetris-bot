@@ -15,9 +15,6 @@ using namespace emscripten;
 
 namespace {
 
-// --- layout export ---------------------------------------------------------
-// C++ is the single source of truth for layout. TypeScript learns it at runtime.
-// Change a field in snapshot.h, rebuild, and TS follows with no TS edit.
 #define LAY(name, ty, cnt)                                             \
     "\"" #name "\":{\"offset\":" + std::to_string(offsetof(tb::Snapshot, name)) + \
     ",\"size\":" + std::to_string(sizeof(tb::Snapshot::name) / (cnt)) +           \
@@ -63,8 +60,6 @@ std::string getSnapshotLayout() {
 int32_t getSnapshotSize()  { return static_cast<int32_t>(sizeof(tb::Snapshot)); }
 int32_t getSnapshotAlign() { return static_cast<int32_t>(alignof(tb::Snapshot)); }
 
-// Names, count, and order come from core/eval.h. bindings only supplies the
-// read-by-index (bindingsWeightSlot) that core/eval.h does not declare.
 std::string getWeightsInfo() {
     tb::Weights w = tb::defaultWeights();
     std::string s = "[";
@@ -78,9 +73,6 @@ std::string getWeightsInfo() {
     return s + "]";
 }
 
-// [piece][rotation] -> flat [dx0,dy0,dx1,dy1,dx2,dy2,dx3,dy3].
-// The renderer draws hold/queue previews and the active piece from this, so the
-// shape table is never duplicated in TypeScript.
 std::string getPieceCells() {
     std::string s = "[";
     for (int p = 0; p < tb::NUM_PIECES; ++p) {
@@ -103,13 +95,8 @@ std::string getPieceCells() {
     return s + "]";
 }
 
-
-// --- handle table ----------------------------------------------------------
-// Monotonic handles: a stale handle is always a clean miss, never a different
-// live bot. unique_ptr: the BotInstance never moves, so botSnapshotPtr() stays
-// valid for its whole life.
 std::unordered_map<int32_t, std::unique_ptr<tb::BotInstance>> g_bots;
-int32_t g_nextHandle = 1;   // 0 is reserved as "invalid"
+int32_t g_nextHandle = 1;
 
 tb::BotInstance* look(int32_t h) {
     auto it = g_bots.find(h);
@@ -128,8 +115,6 @@ bool botTick(int32_t h, double nowMs) {
     return false;
 }
 
-// A wasm linear-memory byte offset. The ADDRESS survives memory growth; the JS
-// VIEW built over it does not. See SnapshotView.sync() in js/layout.ts.
 uintptr_t botSnapshotPtr(int32_t h) {
     auto* b = look(h);
     return b ? reinterpret_cast<uintptr_t>(b->snapshotPtr()) : 0;
@@ -150,7 +135,6 @@ bool botSetWeight(int32_t h, int32_t index, float value) {
     return false;
 }
 
-// seed < 0 means "reuse the seed this instance already has".
 bool botReset(int32_t h, int32_t seed) {
     if (auto* b = look(h)) {
         b->reset(seed < 0 ? b->seed() : static_cast<uint32_t>(seed));
@@ -167,7 +151,7 @@ bool botQueueGarbage(int32_t h, int32_t lines) {
 bool    botDestroy(int32_t h) { return g_bots.erase(h) > 0; }
 int32_t botLiveCount()        { return static_cast<int32_t>(g_bots.size()); }
 
-}  // namespace
+}
 
 EMSCRIPTEN_BINDINGS(tetris_bot_layout) {
     function("getSnapshotLayout", &getSnapshotLayout);

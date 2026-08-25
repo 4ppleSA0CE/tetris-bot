@@ -6,7 +6,6 @@
 namespace tb {
 namespace {
 
-// TETR.IO multiplayer garbage by lines cleared (1..4).
 constexpr int BASE_PLAIN[5] = {0, 0, 1, 2, 4};
 constexpr int BASE_MINI[5]  = {0, 0, 1, 2, 4};
 constexpr int BASE_FULL[5]  = {0, 2, 4, 6, 10};
@@ -18,7 +17,7 @@ int baseAttack(const ClearInfo& c) {
     return BASE_PLAIN[n];
 }
 
-} // namespace
+}
 
 bool b2bMaintaining(const ClearInfo& c) {
     if (c.lines == 0) return false;
@@ -46,4 +45,4 @@ int computeAttack(const ClearInfo& c, int b2bCount, int comboCount) {
     return attack;
 }
 
-} // namespace tb
+}

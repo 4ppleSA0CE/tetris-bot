@@ -6,7 +6,6 @@ namespace tb {
 
 namespace {
 
-// Out of bounds sideways and below the floor count as FILLED; above the board counts as EMPTY.
 inline bool occ(const Board& b, int x, int y) {
     if (x < 0 || x >= BOARD_W) return true;
     if (y < 0) return true;
@@ -14,11 +13,8 @@ inline bool occ(const Board& b, int x, int y) {
     return ((b.rows[y] >> x) & 1u) != 0u;
 }
 
-} // namespace
+}
 
-// Counts TSD-shaped slots only: the ROT_2 T with its nub hanging down. T-spin-triple slots and
-// side-entry (ROT_R / ROT_L) slots are NOT counted and are therefore unrewarded by the
-// evaluator. See the preamble of this task before raising W_T_SLOT_COUNT to compensate.
 int countTSlots(const Board& b) {
     int h[BOARD_W];
     int maxH = 0;
@@ -30,25 +26,22 @@ int countTSlots(const Board& b) {
     int count = 0;
     for (int cx = 1; cx <= BOARD_W - 2; ++cx) {
         for (int cy = 1; cy <= maxH; ++cy) {
-            // S1: the four ROT_2 T cells must be empty
+
             if (occ(b, cx - 1, cy) || occ(b, cx, cy) || occ(b, cx + 1, cy)) continue;
             if (occ(b, cx, cy - 1)) continue;
 
-            // S2: the nub sits in a notch
             bool dl = occ(b, cx - 1, cy - 1);
             bool dr = occ(b, cx + 1, cy - 1);
             if (!dl || !dr) continue;
 
-            // S3: at least 3 of 4 diagonals filled, i.e. at least one overhang above
             bool ul = occ(b, cx - 1, cy + 1);
             bool ur = occ(b, cx + 1, cy + 1);
             int corners = (dl ? 1 : 0) + (dr ? 1 : 0) + (ul ? 1 : 0) + (ur ? 1 : 0);
             if (corners < 3) continue;
 
-            // S4: not roofed over -- some column of the three is open down to cy
             if (h[cx - 1] > cy && h[cx] > cy && h[cx + 1] > cy) continue;
 
-            ++count;   // S5: one count per distinct (cx, cy)
+            ++count;
         }
     }
     return count;
@@ -56,7 +49,7 @@ int countTSlots(const Board& b) {
 
 int cutoutTSlots(Board* b, int maxCuts, int* lines1, int* lines2) {
     int cuts = 0;
-    if (maxCuts > 2) maxCuts = 2;   // more than two virtual Ts is fantasy, and eval cost
+    if (maxCuts > 2) maxCuts = 2;
     while (cuts < maxCuts) {
         int h[BOARD_W];
         int maxH = 0;
@@ -67,7 +60,7 @@ int cutoutTSlots(Board* b, int maxCuts, int* lines1, int* lines2) {
         int bestLines = 0, bestX = -1, bestY = -1;
         for (int cy = 1; cy <= maxH && bestLines < 2; ++cy) {
             for (int cx = 1; cx <= BOARD_W - 2; ++cx) {
-                // Same S1-S4 slot pattern as countTSlots.
+
                 if (occ(*b, cx - 1, cy) || occ(*b, cx, cy) || occ(*b, cx + 1, cy)) continue;
                 if (occ(*b, cx, cy - 1)) continue;
                 const bool dl = occ(*b, cx - 1, cy - 1);
@@ -77,17 +70,16 @@ int cutoutTSlots(Board* b, int maxCuts, int* lines1, int* lines2) {
                 const bool ur = occ(*b, cx + 1, cy + 1);
                 if ((dl ? 1 : 0) + (dr ? 1 : 0) + (ul ? 1 : 0) + (ur ? 1 : 0) < 3) continue;
                 if (h[cx - 1] > cy && h[cx] > cy && h[cx + 1] > cy) continue;
-                // Lines the virtual TSD would clear: row cy needs everything but the
-                // T's top three cells; row cy-1 everything but the nub cell.
+
                 const uint16_t topNeed = (uint16_t)(FULL_ROW & ~(7u << (cx - 1)));
                 const uint16_t nubNeed = (uint16_t)(FULL_ROW & ~(1u << cx));
                 const int lines = ((b->rows[cy] & topNeed) == topNeed ? 1 : 0)
                                 + ((b->rows[cy - 1] & nubNeed) == nubNeed ? 1 : 0);
                 if (lines > bestLines) { bestLines = lines; bestX = cx; bestY = cy; }
-                if (bestLines == 2) break;   // cannot do better; earliest scan wins ties
+                if (bestLines == 2) break;
             }
         }
-        if (bestLines < 1) break;   // a slot that cannot pay is stack, not a chain
+        if (bestLines < 1) break;
         b->rows[bestY]     |= (uint16_t)(7u << (bestX - 1));
         b->rows[bestY - 1] |= (uint16_t)(1u << bestX);
         clearLines(*b);
@@ -126,10 +118,7 @@ Weights defaultWeights() {
 float evaluate(const Board& b, const Weights& w, int b2bCount, int pendingRise,
                int tAvail) {
     Features f;
-    // Zero cutout weights = cutout fully off, byte-identical to the pre-plan-11 eval.
-    // The reshaping alone is NOT free: with rewards at 0 it still hid holes and lowered
-    // maxHeight under a ready slot, and the 4/16 bench went from 0 to 32 top-outs -- the
-    // eval understated danger exactly when pressure made honesty matter most.
+
     if (tAvail > 0 && (w.tslot1 != 0.0f || w.tslot2 != 0.0f)) {
         Board cut = b;
         int l1 = 0, l2 = 0;
@@ -142,7 +131,7 @@ float evaluate(const Board& b, const Weights& w, int b2bCount, int pendingRise,
     }
     int er = f.maxHeight + pendingRise - HEIGHT_PENALTY_THRESHOLD;
     if (er < 0) er = 0;
-    const int extra = er * er - f.heightPenalty;   // 0 when pendingRise == 0
+    const int extra = er * er - f.heightPenalty;
     return w.holes             * static_cast<float>(f.holes)
          + w.coveredCells      * static_cast<float>(f.coveredCells)
          + w.bumpiness         * static_cast<float>(f.bumpiness)
@@ -160,8 +149,7 @@ float evaluate(const Board& b, const Weights& w, int b2bCount, int pendingRise,
          + w.b2bActive         * (b2bCount > 0 ? 1.0f : 0.0f)
          + w.b2bLevel          * static_cast<float>(b2bCount < 8 ? b2bCount : 8)
          + w.b2bCharge         * static_cast<float>(surgeCharge(b2bCount));
-    // attackDealt, plainClear and wastedT are per-move rewards applied by the search with
-    // the gamma discount (PRD 4.5), not properties of the terminal board.
+
 }
 
 Features extractFeatures(const Board& b) {
@@ -172,7 +160,7 @@ Features extractFeatures(const Board& b) {
 
     for (int c = 0; c < BOARD_W; ++c) if (h[c] > f.maxHeight) f.maxHeight = h[c];
 
-    uint64_t holeRows = 0;   // BOARD_H (40) rows fit
+    uint64_t holeRows = 0;
     for (int c = 0; c < BOARD_W; ++c) {
         for (int y = 0; y < h[c] - 1; ++y) {
             if (occ(b, c, y)) continue;
@@ -199,21 +187,21 @@ Features extractFeatures(const Board& b) {
     {
         int e = f.maxHeight - HEIGHT_PENALTY_THRESHOLD;
         if (e < 0) e = 0;
-        f.heightPenalty = e * e;   // squared: this is the cliff above row 12, not a slope
+        f.heightPenalty = e * e;
     }
 
     for (int y = 0; y < f.maxHeight; ++y) {
-        bool prev = true;                       // left wall counts as filled
+        bool prev = true;
         for (int x = 0; x < BOARD_W; ++x) {
             bool cur = occ(b, x, y);
             if (cur != prev) ++f.rowTransitions;
             prev = cur;
         }
-        if (!prev) ++f.rowTransitions;          // right wall counts as filled
+        if (!prev) ++f.rowTransitions;
     }
 
     for (int c = 0; c < BOARD_W; ++c) {
-        bool prev = true;                       // the floor counts as filled
+        bool prev = true;
         for (int y = 0; y < f.maxHeight; ++y) {
             bool cur = occ(b, c, y);
             if (cur != prev) ++f.columnTransitions;
@@ -269,7 +257,7 @@ bool sameName(const char* a, const char* b) {
     return *a == '\0' && *b == '\0';
 }
 
-} // namespace
+}
 
 bool setWeightByName(Weights& w, const char* name, float value) {
     if (name == nullptr || name[0] == '\0') return false;
@@ -294,4 +282,4 @@ float weightValue(const Weights& w, int i) {
     return w.*(kWeightTable[i].field);
 }
 
-} // namespace tb
+}

@@ -1,11 +1,4 @@
-/* ---------------------------------------------------------------------------
-   OPEN ITEM, PRD section 13: "Exact accent color - deferred until the site
-   palette is settled."
 
-   THIS DECLARATION IS THE ONE PLACE THE ACCENT IS DEFINED. Change it here and
-   nowhere else; the renderer only ever reads --bot-accent, and --bot-accent
-   only ever reads this.
-   --------------------------------------------------------------------------- */
 :root {
   --bot-accent-placeholder: oklch(0.79 0.17 84);
 }
@@ -26,7 +19,7 @@ body {
 }
 
 #stage {
-  /* PRD section 7.1 - the eight properties the renderer reads. */
+
   --bot-bg: oklch(0.16 0 0);
   --bot-grid: oklch(0.31 0 0);
   --bot-cell: oklch(0.71 0 0);
@@ -36,7 +29,6 @@ body {
   --bot-text-dim: oklch(0.58 0 0);
   --bot-accent: var(--bot-accent-placeholder);
 
-  /* Piece palette, matching components/tetris/engine/pieces.ts in the portfolio. */
   --bot-piece-i: #60a5fa;
   --bot-piece-j: #38bdf8;
   --bot-piece-l: #fb923c;
@@ -44,7 +36,6 @@ body {
   --bot-piece-s: #34d399;
   --bot-piece-t: #a78bfa;
   --bot-piece-z: #fb7185;
-
 
   color: var(--bot-text);
   background: var(--bot-bg);

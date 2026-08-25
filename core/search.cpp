@@ -11,18 +11,18 @@ namespace {
 constexpr int   MAX_BEAM         = 256;
 constexpr int   MAX_DEPTH        = 8;
 constexpr int   MAX_SEQ          = 1 + PREVIEW_LEN + 2;
-constexpr long  CLOCK_CHECK_MASK = 31;   // check the clock every 32 scored children
+constexpr long  CLOCK_CHECK_MASK = 31;
 
 struct Node {
     Board     board;
     PieceType hold;
-    int8_t    queueIdx;      // index of the next unplaced piece in seq[]
+    int8_t    queueIdx;
     uint8_t   b2bCount;
     uint8_t   combo;
-    uint8_t   remaining;     // incoming garbage lines this path has not yet cancelled
-    float     pathReward;    // sum of discounted move rewards (attack, plain clear, wasted T)
-    float     score;         // pathReward + evaluate(terminal board)
-    int16_t   rootIdx;       // which depth-0 move this path started with; -1 at the root
+    uint8_t   remaining;
+    float     pathReward;
+    float     score;
+    int16_t   rootIdx;
 };
 
 struct RootMove {
@@ -37,12 +37,8 @@ struct Scratch {
     MoveList moves;
 };
 
-// Single-threaded by design: PRD 5.3 rules out pthreads and SharedArrayBuffer, so one static
-// scratch buffer is safe and keeps ~70KB of Nodes and MoveLists off the (small) WASM stack.
 Scratch g_scratch;
 
-// Comparator that makes std::push_heap/pop_heap maintain a MIN-heap on score, so heap[0] is
-// the worst node currently in the beam and is the one a better child evicts.
 struct WorseFirst {
     bool operator()(const Node& a, const Node& b) const { return a.score > b.score; }
 };
@@ -52,9 +48,6 @@ inline double elapsedMs(std::chrono::steady_clock::time_point t0) {
                std::chrono::steady_clock::now() - t0).count();
 }
 
-// A placement is a lock-out if, after line clears, anything is still sitting at or above the
-// top of the visible field. It stays in the beam so a doomed board still yields a legal move,
-// but it loses to every placement that keeps the stack inside the well.
 constexpr float TOPOUT_PENALTY = -1.0e6f;
 
 inline bool aboveField(const Board& b) {
@@ -62,8 +55,6 @@ inline bool aboveField(const Board& b) {
     return false;
 }
 
-// FNV-1a over the parts of a Node that make two beam entries interchangeable. Diagnostics
-// only (cfg.measureDupes) - collisions just miscount slightly.
 inline uint64_t stateHash(const Node& n) {
     uint64_t h = 1469598103934665603ull;
     auto mix = [&h](uint64_t v) { h = (h ^ v) * 1099511628211ull; };
@@ -76,7 +67,7 @@ inline uint64_t stateHash(const Node& n) {
     return h;
 }
 
-} // namespace
+}
 
 SearchResult search(const Board& b, PieceType current, PieceType hold,
                     const PieceType* queue, int queueLen,
@@ -125,30 +116,24 @@ SearchResult search(const Board& b, PieceType current, PieceType hold,
     int curCount = 1;
 
     int   rootCount = 0;
-    // The answer: the winning root of the deepest level that ran to completion.
+
     float bestScore = 0.0f;
     int   bestRoot  = -1;
-    // The level currently being expanded. Reset at every depth boundary; children are only
-    // ever compared against other children of the SAME level, because a depth-0 score and a
-    // depth-4 score measure different boards and are not on the same scale.
+
     float levelBest = 0.0f;
     int   levelRoot = -1;
     long  scored    = 0;
     bool  outOfTime = false;
-    float discount  = 1.0f;   // gamma^d for the placement made at depth d
+    float discount  = 1.0f;
 
     for (int d = 0; d < depth && !outOfTime; ++d) {
-        // CLOCK CHECK 1 of 2: depth boundary. Depth 0 is never skipped.
+
         if (d > 0 && (elapsedMs(t0) > budgetMs || (nodeBudget > 0 && scored >= nodeBudget))) break;
 
         int nextCount = 0;
         levelBest = 0.0f;
         levelRoot = -1;
 
-        // INSERTION DEDUP table (see the child loop). static keeps ~100 KB off the WASM
-        // stack, same reasoning as g_scratch; the search is single-threaded by design.
-        // itCount guards the open-address probe: a full table would loop forever, so
-        // once nearly full the level simply stops deduping (correct, just less thrifty).
         constexpr int ITSIZE = 8192;
         static uint64_t ihash[ITSIZE];
         static float    ireward[ITSIZE];
@@ -156,14 +141,9 @@ SearchResult search(const Board& b, PieceType current, PieceType hold,
         int itCount = 0;
         for (int t = 0; t < ITSIZE; ++t) iused[t] = false;
 
-        // TRANSPOSITION FOLD. Half the surviving beam is duplicate states (measured 52% of
-        // slots at 8x3000 under 4/16) reached along different paths. A duplicate with lower
-        // pathReward is strictly dominated - identical future, less banked reward - so
-        // expanding it only recomputes its better twin's subtree. Skip it; ties keep the
-        // first, so the fold is deterministic.
         bool skip[MAX_BEAM];
         if (d > 0 && curCount > 1) {
-            constexpr int TSIZE = 512;                    // 2x MAX_BEAM, power of two
+            constexpr int TSIZE = 512;
             int16_t  table[TSIZE];
             uint64_t hashes[MAX_BEAM];
             for (int t = 0; t < TSIZE; ++t) table[t] = -1;
@@ -208,14 +188,14 @@ SearchResult search(const Board& b, PieceType current, PieceType hold,
                     newQueueIdx = parent.queueIdx + 2;
                 } else {
                     if (parent.queueIdx >= seqLen) continue;
-                    // identical to branch 0 in every respect; expanding it would clone the beam
+
                     if (parent.hold == seq[parent.queueIdx]) continue;
                     piece       = parent.hold;
                     newHold     = seq[parent.queueIdx];
                     newQueueIdx = parent.queueIdx + 1;
                 }
 
-                generateMoves(parent.board, piece, &S.moves, /*withPaths=*/d == 0);
+                generateMoves(parent.board, piece, &S.moves, d == 0);
 
                 for (int m = 0; m < S.moves.count; ++m) {
                     const Placement& pl = S.moves.items[m];
@@ -245,19 +225,12 @@ SearchResult search(const Board& b, PieceType current, PieceType hold,
                     float reward = cfg.weights.attackDealt * (float)atk;
                     if (lines > 0 && !b2bMaintaining(ci)) {
                         reward += cfg.weights.plainClear;
-                        // Killing a LIVE chain costs extra: the whole point of plan 12.
+
                         if (parent.b2bCount > 0) reward += cfg.weights.b2bBreak;
                     }
                     if (piece == PIECE_T && pl.spin == SPIN_NONE)  reward += cfg.weights.wastedT;
                     child.pathReward = parent.pathReward + reward * discount;
 
-                    // INSERTION DEDUP. Identical states share their future, so among
-                    // duplicates only the highest pathReward can matter; a child that
-                    // matches a seen state without beating its banked reward is dropped
-                    // BEFORE it is evaluated or takes a beam slot. A better late
-                    // duplicate still inserts; its dominated twin (a zombie in the
-                    // heap) is caught by the expansion fold on the next level. Ties
-                    // keep the first arrival, so the search stays deterministic.
                     if (itCount < ITSIZE - ITSIZE / 8) {
                         const uint64_t chash = stateHash(child);
                         int slot = (int)(chash & (uint64_t)(ITSIZE - 1));
@@ -280,8 +253,6 @@ SearchResult search(const Board& b, PieceType current, PieceType hold,
                         if (dominated) continue;
                     }
 
-                    // T availability for the cutout eval: Ts still visible to this
-                    // path (queue remainder + hold). Capped at 2 inside evaluate().
                     int tAvail = (newHold == PIECE_T) ? 1 : 0;
                     for (int q = newQueueIdx; q < seqLen; ++q) {
                         if (seq[q] == PIECE_T && ++tAvail >= 2) break;
@@ -302,10 +273,7 @@ SearchResult search(const Board& b, PieceType current, PieceType hold,
                     }
 
                     ++scored;
-                    // BEST OF THIS LEVEL. The levelRoot < 0 guard makes the first child of the
-                    // level win no matter how negative it is, so a level always has a candidate.
-                    // Nothing here touches bestScore/bestRoot: cross-depth comparison is the bug
-                    // this structure exists to prevent.
+
                     if (child.rootIdx >= 0 && (levelRoot < 0 || child.score > levelBest)) {
                         levelBest = child.score;
                         levelRoot = child.rootIdx;
@@ -320,33 +288,21 @@ SearchResult search(const Board& b, PieceType current, PieceType hold,
                         std::push_heap(next, next + nextCount, WorseFirst{});
                     }
 
-                    // CLOCK CHECK 2 of 2: every 32 scored children, and NEVER at
-                    // depth 0. Interrupting the root level leaves the answer as the
-                    // best of however many placements happened to be enumerated
-                    // first, which is close to arbitrary and is how a starved search
-                    // tops the bot out. A complete root sweep costs ~2 generateMoves
-                    // plus <=256 feature extractions - about 0.15 ms against a 4.8 ms
-                    // budget - so finishing it is affordable even when already over.
                     if (d > 0 && (scored & CLOCK_CHECK_MASK) == 0 &&
                         (elapsedMs(t0) > budgetMs || (nodeBudget > 0 && scored >= nodeBudget))) {
                         outOfTime = true;
                         break;
                     }
-                }   // for m
-            }       // for branch
-        }           // for i
+                }
+            }
+        }
 
-        // PROMOTE. A level that ran to completion replaces the answer, so the returned move is
-        // the deepest fully searched level's winner. A level cut short by the clock does not,
-        // so an overrun falls back to the last level that did finish -- EXCEPT when depth 0
-        // itself was interrupted and there is no answer at all yet, in which case a partially
-        // explored depth 0 is still a legal move and that is what "anytime" promises.
         if (levelRoot >= 0 && (!outOfTime || bestRoot < 0)) {
             bestScore = levelBest;
             bestRoot  = levelRoot;
         }
 
-        if (nextCount == 0) break;   // nothing expanded anywhere; keep the promoted answer
+        if (nextCount == 0) break;
         if (cfg.measureDupes) {
             uint64_t seen[MAX_BEAM];
             int seenCount = 0;
@@ -364,7 +320,7 @@ SearchResult search(const Board& b, PieceType current, PieceType hold,
     }
 
     res.nodes = scored;
-    if (bestRoot < 0) return res;    // genuinely no legal placement: valid stays false
+    if (bestRoot < 0) return res;
 
     res.placement = S.roots[bestRoot].placement;
     res.useHold   = S.roots[bestRoot].useHold;
@@ -373,4 +329,4 @@ SearchResult search(const Board& b, PieceType current, PieceType hold,
     return res;
 }
 
-} // namespace tb
+}

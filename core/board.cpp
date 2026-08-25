@@ -11,17 +11,15 @@ bool collides(const Board& b, PieceType p, Rot r, int x, int y) {
     for (int i = 0; i < 4; ++i) {
         const int cx = x + cells[i].dx;
         const int cy = y + cells[i].dy;
-        if (cx < 0 || cx >= BOARD_W) return true;   // left / right wall
-        if (cy < 0 || cy >= BOARD_H) return true;   // floor / ceiling
+        if (cx < 0 || cx >= BOARD_W) return true;
+        if (cy < 0 || cy >= BOARD_H) return true;
         if (b.rows[cy] & static_cast<uint16_t>(1u << cx)) return true;
     }
     return false;
 }
 
 void lockPiece(Board& b, PieceType p, Rot r, int x, int y) {
-    // The contract is that the caller already checked collides(). Violating it
-    // writes out of bounds in b.rows[] below, which corrupts memory rather than
-    // just setting a wrong bit. Free in release; live in tb_tests, which -UNDEBUG.
+
     assert(!collides(b, p, r, x, y));
     const Cell* cells = pieceCells(p, r);
     for (int i = 0; i < 4; ++i)
@@ -29,9 +27,7 @@ void lockPiece(Board& b, PieceType p, Rot r, int x, int y) {
 }
 
 int clearLines(Board& b) {
-    // Compact surviving rows toward the bottom, then zero the vacated top rows.
-    // This is naive gravity: a row falls by exactly the number of cleared rows
-    // below it, and floating blocks are allowed to stay floating.
+
     int write = 0;
     for (int read = 0; read < BOARD_H; ++read) {
         if (b.rows[read] == FULL_ROW) continue;
@@ -51,11 +47,9 @@ void addGarbage(Board& b, int lines, int holeCol) {
 }
 
 int dropY(const Board& b, PieceType p, Rot r, int x, int y) {
-    // Precondition: (x, y) must not already collide. Violating it silently
-    // returns the caller's own y -- and the search evaluates many candidates
-    // without ever locking them, so lockPiece's assert would never see it.
+
     assert(!collides(b, p, r, x, y));
-    // Terminates: collides() reports the floor as occupied, so the walk stops.
+
     while (!collides(b, p, r, x, y - 1)) --y;
     return y;
 }
@@ -84,4 +78,4 @@ Board boardFromAscii(const char* const* rows, int nRows) {
     return b;
 }
 
-} // namespace tb
+}

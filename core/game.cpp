@@ -65,7 +65,6 @@ void Game::stepPiece() {
         return;
     }
 
-    // Consume pieces exactly the way search's root branches assumed (PRD 4.5).
     PieceType placed;
     if (!r.useHold) {
         placed   = current_;
@@ -113,7 +112,6 @@ void Game::stepPiece() {
             pushEvent(GEV_TETRIS, 4);
         }
 
-        // A spin that clears nothing is worth nothing, so only clearing spins are counted.
         if (r.placement.spin != SPIN_NONE) ++tSpinCount_;
 
         comboCount_ = (uint16_t)(comboCount_ + 1);
@@ -150,7 +148,6 @@ void Game::stepPiece() {
         pendingGarbage_ = 0;
     }
 
-    // Lock-out: anything left at or above the top of the visible field ends the run.
     for (int y = VISIBLE_H; y < BOARD_H; ++y) {
         if (board_.rows[y] != 0) {
             toppedOut_ = true;
@@ -160,4 +157,4 @@ void Game::stepPiece() {
     }
 }
 
-} // namespace tb
+}
