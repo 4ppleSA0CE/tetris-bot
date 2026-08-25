@@ -1,9 +1,3 @@
-/**
- * Reproduce sizeof(Snapshot) from the field records: the highest byte any field
- * touches, rounded up to the struct's alignment. Compared against the C++
- * sizeof at init — if they disagree, something moved and JS is about to read
- * garbage (PRD section 12).
- */
 export function computeStructSize(layout, align) {
     let max = 0;
     for (const [name, f] of Object.entries(layout)) {
@@ -15,9 +9,6 @@ export function computeStructSize(layout, align) {
     }
     return Math.ceil(max / align) * align;
 }
-// --- piece cell table ------------------------------------------------------
-// [piece][rotation] -> flat [dx0,dy0,dx1,dy1,dx2,dy2,dx3,dy3], from C++
-// pieceCells(). Held here so the renderer never duplicates the shape table.
 const EMPTY_CELLS = [];
 let pieceCellTable = null;
 export function setPieceCells(table) {
@@ -32,14 +23,6 @@ export function getPieceCells(piece, rot) {
         return EMPTY_CELLS;
     return p[rot & 3] ?? EMPTY_CELLS;
 }
-/**
- * A live window onto a C++ tb::Snapshot in wasm linear memory. Zero copy.
- *
- * ALLOW_MEMORY_GROWTH detaches the backing ArrayBuffer when the heap grows: a
- * captured DataView then throws, and a captured typed array silently reads
- * `undefined`. The pointer itself stays valid. sync() compares buffer identity
- * and rebuilds the views when they differ — one reference compare per frame.
- */
 export class SnapshotView {
     heap;
     ptr;
@@ -51,7 +34,6 @@ export class SnapshotView {
     queueView;
     cellPieceView;
     eventBuf = [];
-    /** Diagnostics: how many times the views have been rebuilt. Starts at 1. */
     rebinds = 0;
     constructor(heap, ptr, L, structSize) {
         this.heap = heap;
@@ -64,8 +46,6 @@ export class SnapshotView {
         this.rebind();
     }
     rebind() {
-        // ArrayBufferLike, not ArrayBuffer: TypedArray.buffer may be a SharedArrayBuffer
-        // and TS 5.7+ enforces that. Only ever compared by identity below.
         const b = this.heap.HEAPU8.buffer;
         this.buf = b;
         this.dv = new DataView(b, this.ptr, this.structSize);
@@ -74,14 +54,11 @@ export class SnapshotView {
         this.cellPieceView = new Uint8Array(b, this.ptr + this.L.cellPiece.offset, this.L.cellPiece.count);
         this.rebinds++;
     }
-    /** Revalidate against heap growth. Call before every read. */
     sync() {
         if (this.buf !== this.heap.HEAPU8.buffer)
             this.rebind();
         return this;
     }
-    // `true` is littleEndian. wasm is always little-endian; being explicit means
-    // the code stays correct under a big-endian JS test shim.
     u8(f) { return this.dv.getUint8(this.L[f].offset); }
     i8(f) { return this.dv.getInt8(this.L[f].offset); }
     u16(f) { return this.dv.getUint16(this.L[f].offset, true); }
@@ -107,7 +84,6 @@ export class SnapshotView {
     get pps() { return this.f32('pps'); }
     get state() { return this.u8('state'); }
     get pendingGarbage() { return this.u8('pendingGarbage'); }
-    /** Events written this tick. The array is reused; copy what you keep. */
     get events() {
         const n = this.u8('eventCount');
         const base = this.L.events.offset;

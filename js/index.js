@@ -5,25 +5,9 @@ const DEFAULT_SEED = 0;
 const DEFAULT_PPS = 5;
 const DEFAULT_DEPTH = 7;
 const DEFAULT_WIDTH = 30;
-/**
- * Ticks used to settle a reduced-motion board. Each carries a full second of
- * simulated time, so at the default 5 PPS this places roughly 40 pieces before
- * the bot goes permanently static.
- */
 const REDUCED_MOTION_TICKS = 8;
 const REDUCED_MOTION_STEP_MS = 1000;
 let loading = null;
-/**
- * Instantiate the wasm module once per page. Memoized: a second instantiation
- * would create a second heap and a second, disjoint handle space.
- *
- * NOT part of the PRD section 6 surface. That surface is createTetrisBot,
- * prefersReducedMotion, isViewportBelow and the types - "deliberately small.
- * Every additional function is friction at embed time." This is exported only
- * so tests/*.mjs and the renderer tests can reach the piece-cell table and the
- * live-instance count without a second module instance. Hosts do not call it,
- * and nothing here may become load-bearing for an embed.
- */
 export function loadBotModule() {
     loading ??= createBotModule().then((mod) => {
         const layout = JSON.parse(mod.getSnapshotLayout());
@@ -46,19 +30,11 @@ function clampPPS(pps) {
         return DEFAULT_PPS;
     return Math.min(20, Math.max(1, pps));
 }
-/**
- * PRD section 6: prefers-reduced-motion -> render a single static board.
- * Safe to call in Node and in a Worker; returns false where matchMedia is absent.
- */
 export function prefersReducedMotion() {
     if (typeof window === 'undefined' || typeof window.matchMedia !== 'function')
         return false;
     return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 }
-/**
- * PRD section 6: "viewport below mobile breakpoint -> caller decides; wrapper
- * exposes the check." This is that check. The wrapper takes no action on it.
- */
 export function isViewportBelow(minWidthPx) {
     if (typeof window === 'undefined')
         return false;
@@ -81,26 +57,13 @@ export async function createTetrisBot(config = {}) {
         }
     }
     const view = new SnapshotView(mod, mod.botSnapshotPtr(handle), layout, structSize);
-    // config.ignoreReducedMotion is a deliberate per-instance opt-out; see js/types.ts.
     const reducedMotion = prefersReducedMotion() && config.ignoreReducedMotion !== true;
     if (reducedMotion) {
-        // One static board, settled up front, then no motion ever.
         for (let i = 1; i <= REDUCED_MOTION_TICKS; i++) {
             mod.botTick(handle, i * REDUCED_MOTION_STEP_MS);
         }
     }
     let destroyed = false;
-    // The core is handed a clock with all hidden time removed, so a tab that was
-    // backgrounded for ten minutes resumes exactly where it paused instead of
-    // trying to simulate ten minutes of Tetris on one frame.
-    //
-    // The subtracted span is measured from hiddenAtMs - the last timestamp the CORE
-    // actually saw - and not from the last timestamp tick() was called with. Those
-    // differ whenever ticks keep arriving while hidden (a host on setInterval, or the
-    // handful of frames a browser still delivers before it throttles): those ticks
-    // return early without advancing the core, so counting from them would leave the
-    // whole hidden span unsubtracted and hand the core a jump forward on resume -
-    // exactly the catch-up burst this code exists to prevent.
     let hiddenOffsetMs = 0;
     let hiddenAtMs = -1;
     let lastVisibleNowMs = 0;
@@ -113,7 +76,6 @@ export async function createTetrisBot(config = {}) {
                 hiddenAtMs = lastVisibleNowMs;
         }
         else if (hiddenAtMs >= 0) {
-            // The gap is folded in on the next tick, once we see the new timestamp.
             pendingResume = true;
         }
     };

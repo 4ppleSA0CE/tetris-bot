@@ -1,4 +1,3 @@
-/** Mirrors tb::EventType in bindings/snapshot.h. */
 export const EventType = {
     PIECE_LOCK: 0,
     LINE_CLEAR: 1,
@@ -12,7 +11,5 @@ export const EventType = {
     PERFECT_CLEAR: 9,
     TOPOUT: 10,
 };
-/** Spin kind of the placement currently being animated. */
 export const SpinKind = { NONE: 0, MINI: 1, FULL: 2 };
-/** Piece indices as the core numbers them. -1 means none. */
 export const PieceLetter = ['I', 'J', 'L', 'O', 'S', 'T', 'Z'];

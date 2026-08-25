@@ -1,43 +1,22 @@
 import { PieceLetter } from '../js/types.js';
 import { getPieceCells } from '../js/layout.js';
-// --- constants -------------------------------------------------------------
 const VISIBLE_ROWS = 20;
 const BOARD_COLS = 10;
-/** Width of the hold/queue column, in cells. */
 const SIDE_CELLS = 4.5;
 const HOLD_CELLS = 3;
-/** Fraction of the demo layout's width reserved for that column. */
 const HUD_HEIGHT = 22;
 const CELL_GAP = 1;
 const FONT_STACK = 'ui-monospace, SFMono-Regular, Menlo, monospace';
-/** cellPiece entry for a cell nothing has locked into (bindings/snapshot.h). */
 const CELL_EMPTY = 255;
-/**
- * Piece order is the core's: I J L O S T Z. Read from custom properties like every
- * other paint in this file, so a host restyles the whole board without touching TS.
- */
 const PIECE_VARS = [
     '--bot-piece-i', '--bot-piece-j', '--bot-piece-l', '--bot-piece-o',
     '--bot-piece-s', '--bot-piece-t', '--bot-piece-z',
 ];
-/** PRD section 7.3: brief scale-in, fade over ~800ms. */
 const CALLOUT_LIFE_MS = 800;
 const CALLOUT_POP_MS = 120;
 const CALLOUT_SCALE_FROM = 0.72;
 const MAX_CALLOUTS = 4;
-/**
- * Not a color. `currentColor` resolves to the host element's own `color`, and
- * exists solely so a host that forgot to set the custom properties renders
- * something instead of `undefined`. PRD section 7.1: ship no hardcoded colors.
- */
 const FALLBACK = 'currentColor';
-/**
- * The seven non-accent properties. The accent is deliberately NOT read here: it
- * is fetched by exactly one function and spent in exactly one place, the callout
- * pass at the bottom of this file. tests/renderer_discipline.mjs enforces that by
- * counting occurrences, so do not name the accent property anywhere else - not
- * even in a comment.
- */
 function readTheme(el) {
     const cs = getComputedStyle(el);
     const v = (name) => cs.getPropertyValue(name).trim() || FALLBACK;
@@ -58,10 +37,8 @@ function computeGeometry(canvas, layout, chrome) {
     const h = Math.max(1, Math.round(rect.height || canvas.height || 660));
     const dpr = typeof devicePixelRatio === 'number' && devicePixelRatio > 0 ? devicePixelRatio : 1;
     const hudH = chrome === 'full' ? HUD_HEIGHT : 0;
-    // demo: hold column left of the well, queue column right of it.
     const holdCells = chrome === 'none' ? 0 : HOLD_CELLS;
     const sideCells = chrome === 'none' ? 0 : SIDE_CELLS;
-    // sidebar: PRD section 7.5 fixes cell size at viewport height / 22.
     const cell = layout === 'sidebar'
         ? Math.max(2, Math.floor(h / 22))
         : Math.max(2, Math.floor(Math.min((h - hudH - 8) / VISIBLE_ROWS, (w - 8) / (BOARD_COLS + holdCells + sideCells))));
@@ -98,11 +75,6 @@ function computeGeometry(canvas, layout, chrome) {
         calloutAlign,
     };
 }
-/**
- * A piece's paint. `fallback` is what an empty or unknown cell uses, which is how
- * --bot-cell / --bot-cell-active / --bot-cell-ghost stay meaningful now that the
- * board is coloured per piece: they are the neutral default for each context.
- */
 function pieceFill(th, piece, fallback) {
     return (piece >= 0 && piece < 7 ? th.piece[piece] : undefined) ?? fallback;
 }
@@ -113,14 +85,10 @@ function drawWell(ctx, th, g) {
     ctx.lineWidth = 1;
     ctx.strokeRect(g.wellX + 0.5, g.wellY + 0.5, g.wellW, g.wellH);
 }
-// Incoming-garbage warning: a thin strip up the left well edge, one visible row per
-// pending line, drawn from the bottom -- the TETR.IO convention players expect.
 function drawPendingGarbage(ctx, s, th, g) {
     const lines = Math.min(s.pendingGarbage ?? 0, VISIBLE_ROWS);
     if (lines <= 0)
         return;
-    // ponytail: the Z piece's theme colour doubles as the danger tint; a dedicated
-    // --bot-danger CSS variable can replace it if the palette ever diverges.
     ctx.fillStyle = th.piece[6] ?? th.text;
     ctx.fillRect(g.wellX - 4, g.wellY + (VISIBLE_ROWS - lines) * g.cell, 3, lines * g.cell);
 }
@@ -142,7 +110,6 @@ function drawGhost(ctx, s, th, g) {
     if (s.activePiece < 0)
         return;
     const cells = getPieceCells(s.activePiece, s.activeRot);
-    // Outlined in the piece's own colour, not a flat neutral.
     ctx.strokeStyle = pieceFill(th, s.activePiece, th.cellGhost);
     ctx.lineWidth = 1;
     const size = g.cell - CELL_GAP;
@@ -157,14 +124,6 @@ function drawGhost(ctx, s, th, g) {
 function nowMs() {
     return typeof performance !== 'undefined' ? performance.now() : Date.now();
 }
-/**
- * DISCRETE, cell-snapped, no interpolation - jstris / TETR.IO handling rather than
- * an eased slide. The core already advances the piece one path step at a time along
- * the route the BFS found, so the piece still visibly walks its route and performs
- * its kicks; it just does it on cell boundaries instead of being smoothed between
- * them. There is deliberately no per-frame animation state: what the core reports is
- * exactly what gets painted, which is also why the position is testable.
- */
 function drawActivePiece(ctx, s, th, g) {
     if (s.activePiece < 0)
         return;
@@ -174,8 +133,6 @@ function drawActivePiece(ctx, s, th, g) {
     for (let i = 0; i < cells.length; i += 2) {
         const x = s.activeX + (cells[i] ?? 0);
         const y = s.activeY + (cells[i + 1] ?? 0);
-        // The piece spawns at row 21, above the field. Without this it paints outside
-        // the well's top border. tests/renderer_board.mjs pins it.
         if (y < 0 || y >= VISIBLE_ROWS)
             continue;
         ctx.fillRect(cellLeft(g, x), cellTop(g, y), size, size);
@@ -191,7 +148,7 @@ function drawMiniPiece(ctx, th, piece, px, py, unit) {
         top = Math.max(top, cells[i] ?? 0);
     for (let i = 0; i < cells.length; i += 2) {
         const dx = cells[i] ?? 0;
-        const dy = (cells[i + 1] ?? 0) + 2 - top; // top-align: box rows differ per piece
+        const dy = (cells[i + 1] ?? 0) + 2 - top;
         ctx.fillRect(px + dx * unit, py - dy * unit, unit - CELL_GAP, unit - CELL_GAP);
     }
 }
@@ -212,12 +169,6 @@ function drawHud(ctx, s, th, g) {
         `${s.linesCleared} LINES   ${s.attackSent} ATK   B2B ${s.b2bCount}`;
     ctx.fillText(line, g.calloutAlign === 'right' ? g.wellX + g.wellW : g.wellX, g.hudY);
 }
-/**
- * DISCIPLINE (PRD section 7.1): the accent property is read here and nowhere
- * else, and this function is called from drawCallouts() and nowhere else. A
- * single accent that occurs nowhere else lands disproportionately hard; do not
- * spend it on the active piece, the HUD, or the well outline.
- */
 function readAccent(el) {
     return getComputedStyle(el).getPropertyValue('--bot-accent').trim() || FALLBACK;
 }
@@ -233,7 +184,7 @@ function calloutText(type, param, piece) {
         case 8: return param > 0 ? `SURGE +${param}` : null;
         case 9: return 'PERFECT CLEAR';
         case 10: return 'TOP OUT';
-        default: return null; // PIECE_LOCK, LINE_CLEAR are not shouted about
+        default: return null;
     }
 }
 function collectCallouts(queue, s, t) {
@@ -250,10 +201,6 @@ function collectCallouts(queue, s, t) {
     }
 }
 function drawCallouts(ctx, queue, g, host, t) {
-    // Retire expired entries BEFORE touching any paint state. Setting the accent
-    // fill on a frame that then draws nothing leaves it as the context's residual
-    // fillStyle, and the next frame's first op inherits it - which reads as the
-    // accent escaping the callouts even though no accent pixel was ever painted.
     for (let i = queue.length - 1; i >= 0; i--) {
         const c = queue[i];
         if (c === undefined || t - c.born >= CALLOUT_LIFE_MS)
@@ -271,7 +218,7 @@ function drawCallouts(ctx, queue, g, host, t) {
             continue;
         const age = t - c.born;
         const pop = Math.min(1, age / CALLOUT_POP_MS);
-        const eased = 1 - (1 - pop) * (1 - pop); // easeOutQuad
+        const eased = 1 - (1 - pop) * (1 - pop);
         const scale = CALLOUT_SCALE_FROM + (1 - CALLOUT_SCALE_FROM) * eased;
         const life = age / CALLOUT_LIFE_MS;
         ctx.globalAlpha = 1 - life * life;
