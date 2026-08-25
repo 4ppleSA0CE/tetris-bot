@@ -402,7 +402,7 @@ void BotInstance::writeActive(double nowMs) {
     constexpr double DAS_MS  = 90.0;
     constexpr double ARR_MS  = 15.0;
     constexpr double SOFT_MS = 25.0;   // per cell, surviving tuck/spin soft drops
-    constexpr double HARD_MS = 5.0;    // per cell of the final fall: a slam, not a drift
+    constexpr double HARD_MS = 10.0;   // per cell of the final fall
 
     double u = pieceMs_ > 0.0 ? (nowMs - pieceStartMs_) / pieceMs_ : 1.0;
     u = std::clamp(u, 0.0, 1.0);
