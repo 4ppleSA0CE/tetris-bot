@@ -36,6 +36,7 @@ public:
     uint32_t     linesCleared() const { return linesCleared_; }
     uint32_t     attackSent()   const { return attackSent_; }
     uint32_t     surgeSent()    const { return surgeSent_; }
+    uint32_t     pcCount()      const { return pcCount_; }
     uint16_t     b2bCount()     const { return b2bCount_; }
     uint16_t     comboCount()   const { return comboCount_; }
 
@@ -73,6 +74,7 @@ private:
     uint32_t     attackSent_;
     uint32_t     surgeSent_;
     uint32_t     tSpinCount_;
+    uint32_t     pcCount_;
     uint16_t     b2bCount_;
     uint16_t     comboCount_;
     uint16_t     maxB2b_;

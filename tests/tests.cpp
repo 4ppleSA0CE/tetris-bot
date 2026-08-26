@@ -2550,7 +2550,11 @@ static void test_game_garbage() {
     h.stepPiece();
     assert(h.board().rows[0] == g.board().rows[0]);
 
-    tb::Game a(7u, cfg);
+    // pending garbage suppresses the pc gate, so the twins only stay comparable
+    // at step k with the gate off on both
+    tb::SearchConfig ncfg = cfg;
+    ncfg.pc.enabled = false;
+    tb::Game a(7u, ncfg);
     int k = -1, atk = 0;
     for (int i = 0; i < 300 && k < 0; ++i) {
         const uint32_t before = a.attackSent();
@@ -2558,7 +2562,7 @@ static void test_game_garbage() {
         if (a.attackSent() > before) { k = i; atk = (int)(a.attackSent() - before); }
     }
     assert(k >= 0);
-    tb::Game b(7u, cfg);
+    tb::Game b(7u, ncfg);
     b.setMessiness(0.0f);
     for (int i = 0; i < k; ++i) b.stepPiece();
     b.queueGarbage(atk + 1);
@@ -3154,6 +3158,50 @@ static void test_pc_solver_node_budget_aborts() {
     assert(r.nodes <= 8);  // stopped promptly; nodes now accumulate across both heights
 }
 
+static void test_pc_plan_gate() {
+    static const char* rows[] = {"#########.",
+                                 "#########.",
+                                 "#########.",
+                                 "#########."};
+    const tb::Board b = tb::boardFromAscii(rows, 4);
+    tb::SearchConfig cfg;
+    cfg.pc.threshold = 0.5f;
+    tb::SearchResult out{};
+
+    assert(tb::pcPlan(b, tb::PIECE_I, tb::PIECE_NONE, nullptr, 0, 0, 0, cfg, &out));
+    assert(out.valid);
+    assert(!out.useHold);
+    assert(out.placement.rot == tb::ROT_R);
+    assert(out.placement.x == 7);  // box origin; I at ROT_R occupies column x+2 = 9
+    tb::Board done = b;
+    tb::lockPiece(done, tb::PIECE_I, out.placement.rot, out.placement.x, out.placement.y);
+    assert(tb::clearLines(done) == 4);
+    assert(tb::isEmpty(done));
+
+    assert(!tb::pcPlan(b, tb::PIECE_I, tb::PIECE_NONE, nullptr, 0, 0, 3, cfg, &out));
+
+    tb::SearchConfig off = cfg;
+    off.pc.enabled = false;
+    assert(!tb::pcPlan(b, tb::PIECE_I, tb::PIECE_NONE, nullptr, 0, 0, 0, off, &out));
+
+    tb::Board tall = b;
+    tall.rows[4] = 1u;
+    assert(!tb::pcPlan(tall, tb::PIECE_I, tb::PIECE_NONE, nullptr, 0, 0, 0, cfg, &out));
+}
+
+static void test_game_pc_determinism() {
+    tb::SearchConfig cfg;
+    cfg.nodeBudget = 2000;
+    cfg.timeBudgetMs = 1000000000.0f;
+    cfg.pc.timeBudgetMs = 1000000000.0f;  // wall-clock abort must not diverge the twins
+    tb::Game a(42u, cfg), c(42u, cfg);
+    for (int i = 0; i < 150 && !a.toppedOut(); ++i) { a.stepPiece(); c.stepPiece(); }
+    assert(a.piecesPlaced() == c.piecesPlaced());
+    assert(a.attackSent() == c.attackSent());
+    assert(a.pcCount() == c.pcCount());
+    for (int y = 0; y < tb::BOARD_H; ++y) assert(a.board().rows[y] == c.board().rows[y]);
+}
+
 int main() {
     RUN(test_types_constants);
     RUN(test_piece_cells_spawn_shapes);
@@ -3303,6 +3351,8 @@ int main() {
     RUN(test_pc_solve_unknown_refutes);
     RUN(test_pc_solve_skips_undecidable_supply);
     RUN(test_pc_solver_node_budget_aborts);
+    RUN(test_pc_plan_gate);
+    RUN(test_game_pc_determinism);
     std::printf("all %d tests passed\n", g_testCount);
     return 0;
 }

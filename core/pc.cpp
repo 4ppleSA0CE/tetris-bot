@@ -249,9 +249,22 @@ PcResult pcSolve(const Board& b, PieceType current, PieceType hold,
     return best;
 }
 
-bool pcPlan(const Board&, PieceType, PieceType, const PieceType*, int,
-            uint8_t, int, const SearchConfig&, SearchResult*) {
-    return false;
+bool pcPlan(const Board& b, PieceType current, PieceType hold,
+            const PieceType* queue, int queueLen, uint8_t bagMask,
+            int pendingGarbage, const SearchConfig& cfg, SearchResult* out) {
+    if (!cfg.pc.enabled || pendingGarbage > 0) return false;
+    for (int c = 0; c < BOARD_W; ++c)
+        if (columnHeight(b, c) > 4) return false;
+    const PcResult r = pcSolve(b, current, hold, queue, queueLen, bagMask, cfg.pc);
+    if (!r.valid || r.prob < cfg.pc.threshold) return false;
+    out->placement = r.move;
+    out->useHold   = r.useHold;
+    out->valid     = true;
+    out->score     = r.prob;
+    out->nodes     = r.nodes;
+    out->dupes     = 0;
+    out->beamSlots = 0;
+    return true;
 }
 
 }

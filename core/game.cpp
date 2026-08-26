@@ -1,6 +1,7 @@
 #include "core/game.h"
 #include "core/board.h"
 #include "core/attack.h"
+#include "core/pc.h"
 #include <cassert>
 #include <chrono>
 
@@ -24,6 +25,7 @@ void Game::reset(uint32_t seed) {
     attackSent_    = 0;
     surgeSent_     = 0;
     tSpinCount_    = 0;
+    pcCount_       = 0;
     b2bCount_      = 0;
     comboCount_    = 0;
     maxB2b_        = 0;
@@ -51,8 +53,11 @@ void Game::stepPiece() {
     eventCount_ = 0;
 
     const auto t0 = std::chrono::steady_clock::now();
-    const SearchResult r = search(board_, current_, hold_, queue_, PREVIEW_LEN,
-                                  (int)b2bCount_, (int)comboCount_, cfg_, pendingGarbage_);
+    SearchResult r{};
+    if (!pcPlan(board_, current_, hold_, queue_, PREVIEW_LEN, bag_.remainingMask(),
+                pendingGarbage_, cfg_, &r))
+        r = search(board_, current_, hold_, queue_, PREVIEW_LEN,
+                   (int)b2bCount_, (int)comboCount_, cfg_, pendingGarbage_);
     lastSearchMs_ = (float)std::chrono::duration<double, std::milli>(
                         std::chrono::steady_clock::now() - t0).count();
     lastSearchNodes_ = r.nodes;
@@ -127,7 +132,7 @@ void Game::stepPiece() {
             b2bCount_ = 0;
         }
 
-        if (ci.perfectClear) pushEvent(GEV_PERFECT_CLEAR, 0);
+        if (ci.perfectClear) { ++pcCount_; pushEvent(GEV_PERFECT_CLEAR, 0); }
     } else {
         comboCount_ = 0;
     }

@@ -8,6 +8,7 @@
 #include "core/piece.h"
 #include "core/srs.h"
 #include "core/attack.h"
+#include "core/pc.h"
 
 namespace tb {
 
@@ -196,8 +197,11 @@ void BotInstance::plan() {
     for (int i = 0; i < PREVIEW_LEN; ++i) prePlanQueue_[i] = queue_[i];
     prePlanBag_ = bag_;
 
-    const SearchResult r = search(board_, current_, hold_, queue_, PREVIEW_LEN,
-                                  b2bCount_, comboCount_, cfg_, pendingGarbage_);
+    SearchResult r{};
+    if (!pcPlan(board_, current_, hold_, queue_, PREVIEW_LEN, bag_.remainingMask(),
+                pendingGarbage_, cfg_, &r))
+        r = search(board_, current_, hold_, queue_, PREVIEW_LEN,
+                   b2bCount_, comboCount_, cfg_, pendingGarbage_);
     if (!r.valid) { topOut(); return; }
 
     if (r.useHold) {
