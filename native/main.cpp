@@ -461,7 +461,7 @@ static int runRandomMode(uint32_t seed, int pieces, bool doPrint, bool doStats) 
         if (info.spin != tb::SPIN_NONE && cleared > 0) ++st.tspins;
 
         if (cleared > 0) {
-            b2bCount = tb::b2bMaintaining(info) ? b2bCount + 1 : 0;
+            b2bCount = tb::b2bAfterClear(info, b2bCount);
             ++combo;
         } else {
             combo = 0;
