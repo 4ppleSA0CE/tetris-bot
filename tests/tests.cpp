@@ -866,6 +866,16 @@ static void test_attack_all_clear_adds_five_and_holds_b2b() {
     assert(!tb::b2bMaintaining(ci(2, tb::SPIN_NONE, false)));
 }
 
+static void test_b2b_after_clear() {
+    using tb::ClearInfo;
+    assert(tb::b2bAfterClear(ClearInfo{0, tb::SPIN_NONE, false}, 7) == 7);
+    assert(tb::b2bAfterClear(ClearInfo{1, tb::SPIN_NONE, false}, 5) == 0);
+    assert(tb::b2bAfterClear(ClearInfo{4, tb::SPIN_NONE, false}, 3) == 4);
+    assert(tb::b2bAfterClear(ClearInfo{1, tb::SPIN_MINI, false}, 1) == 2);
+    assert(tb::b2bAfterClear(ClearInfo{1, tb::SPIN_NONE, true},  0) == 2);
+    assert(tb::b2bAfterClear(ClearInfo{4, tb::SPIN_NONE, true},  1) == 3);
+}
+
 static void test_surge_charge_by_chain_length() {
     for (int c = 0; c <= 4; ++c) assert(tb::surgeCharge(c) == 0);
     assert(tb::surgeCharge(5) == 4);
@@ -3262,6 +3272,7 @@ int main() {
     RUN(test_attack_combo_log_floor_for_zero_base);
     RUN(test_attack_combo_multiplier_is_unbounded);
     RUN(test_attack_all_clear_adds_five_and_holds_b2b);
+    RUN(test_b2b_after_clear);
     RUN(test_surge_charge_by_chain_length);
     RUN(test_attack_surge_is_sent_on_break);
     RUN(test_attack_is_zero_when_no_lines_clear);

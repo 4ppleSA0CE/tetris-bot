@@ -290,7 +290,8 @@ void BotInstance::lockCurrent() {
         }
 
         if (b2bMaintaining(ci)) {
-            if (b2bCount_ < 0xFFFF) ++b2bCount_;
+            const int nb = b2bAfterClear(ci, (int)b2bCount_);
+            b2bCount_ = (uint16_t)(nb > 0xFFFF ? 0xFFFF : nb);
             if (b2bCount_ > 1) {
                 pushEvent(EV_B2B_EXTEND,
                           static_cast<uint8_t>(b2bCount_ > 255 ? 255 : b2bCount_));

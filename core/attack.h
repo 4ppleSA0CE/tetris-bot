@@ -13,6 +13,8 @@ struct ClearInfo {
 
 bool b2bMaintaining(const ClearInfo& c);
 
+int b2bAfterClear(const ClearInfo& c, int b2bCount);
+
 int surgeCharge(int b2bCount);
 
 int computeAttack(const ClearInfo& c, int b2bCount, int comboCount);

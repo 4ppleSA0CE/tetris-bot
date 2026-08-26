@@ -213,10 +213,8 @@ SearchResult search(const Board& b, PieceType current, PieceType hold,
 
                     child.hold        = newHold;
                     child.queueIdx    = (int8_t)newQueueIdx;
-                    child.b2bCount    = (lines == 0) ? parent.b2bCount
-                                      : b2bMaintaining(ci)
-                                          ? (uint8_t)(parent.b2bCount < 255 ? parent.b2bCount + 1 : 255)
-                                          : (uint8_t)0;
+                    const int nb      = b2bAfterClear(ci, parent.b2bCount);
+                    child.b2bCount    = (uint8_t)(nb > 255 ? 255 : nb);
                     child.combo       = (lines > 0)
                                           ? (uint8_t)(parent.combo < 255 ? parent.combo + 1 : 255)
                                           : (uint8_t)0;

@@ -24,6 +24,12 @@ bool b2bMaintaining(const ClearInfo& c) {
     return c.lines >= 4 || c.spin != SPIN_NONE || c.perfectClear;
 }
 
+int b2bAfterClear(const ClearInfo& c, int b2bCount) {
+    if (c.lines == 0) return b2bCount;
+    if (!b2bMaintaining(c)) return 0;
+    return b2bCount + (c.perfectClear ? 2 : 1);
+}
+
 int surgeCharge(int b2bCount) {
     return b2bCount > 4 ? b2bCount - 1 : 0;
 }
