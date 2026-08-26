@@ -218,6 +218,60 @@ bool pcParityOk(const Board& b, int height, PieceType current, PieceType hold,
     return false;
 }
 
+// shape match only: reachability is intentionally ignored, so pcSolve stays
+// the exact authority and this is just a cheap steering signal for search
+bool pcNextPiece(const Board& b, PieceType p) {
+    if (p == PIECE_NONE) return false;
+    int maxH = 0;
+    for (int c = 0; c < BOARD_W; ++c) {
+        const int h = columnHeight(b, c);
+        if (h > maxH) maxH = h;
+    }
+    if (maxH == 0 || maxH > 4) return false;
+
+    int filled = 0;
+    for (int y = 0; y < maxH; ++y) filled += __builtin_popcount(b.rows[y]);
+    if (maxH * BOARD_W - filled != 4) return false;
+
+    struct Pt { int x, y; };
+    Pt holes[4];
+    int n = 0;
+    int minX = BOARD_W, minY = maxH;
+    for (int y = 0; y < maxH; ++y) {
+        for (int c = 0; c < BOARD_W; ++c) {
+            if (b.rows[y] & static_cast<uint16_t>(1u << c)) continue;
+            holes[n++] = {c, y};
+            minX = std::min(minX, c);
+            minY = std::min(minY, y);
+        }
+    }
+    for (int i = 0; i < 4; ++i) { holes[i].x -= minX; holes[i].y -= minY; }
+
+    for (int rot = 0; rot < 4; ++rot) {
+        const Cell* cs = pieceCells(p, static_cast<Rot>(rot));
+        int pMinX = 127, pMinY = 127;
+        for (int i = 0; i < 4; ++i) {
+            pMinX = std::min<int>(pMinX, cs[i].dx);
+            pMinY = std::min<int>(pMinY, cs[i].dy);
+        }
+        bool matched[4] = {false, false, false, false};
+        bool ok = true;
+        for (int i = 0; i < 4 && ok; ++i) {
+            ok = false;
+            for (int j = 0; j < 4; ++j) {
+                if (matched[j]) continue;
+                if (holes[i].x == cs[j].dx - pMinX && holes[i].y == cs[j].dy - pMinY) {
+                    matched[j] = true;
+                    ok = true;
+                    break;
+                }
+            }
+        }
+        if (ok) return true;
+    }
+    return false;
+}
+
 PcResult pcSolveHeight(const Board& b, int height, PieceType current, PieceType hold,
                        const PieceType* queue, int queueLen, uint8_t bagMask,
                        const PcConfig& cfg) {

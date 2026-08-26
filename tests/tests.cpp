@@ -3153,6 +3153,53 @@ static void test_pc_solve_gated_boards_cost_zero_nodes() {
     }
 }
 
+static tb::Board pcHoleBoardFor(tb::PieceType p) {
+    const tb::Cell* cs = tb::pieceCells(p, tb::ROT_0);
+    int maxDy = 0;
+    for (int i = 0; i < 4; ++i) if (cs[i].dy > maxDy) maxDy = cs[i].dy;
+    tb::Board b{};
+    for (int y = 0; y <= maxDy; ++y) b.rows[y] = tb::FULL_ROW;
+    for (int i = 0; i < 4; ++i)
+        b.rows[cs[i].dy] &= static_cast<uint16_t>(~(1u << (3 + cs[i].dx)));
+    return b;
+}
+
+static void test_pc_next_piece() {
+    static const tb::PieceType kAll[7] = {tb::PIECE_I, tb::PIECE_J, tb::PIECE_L, tb::PIECE_O,
+                                          tb::PIECE_S, tb::PIECE_T, tb::PIECE_Z};
+    for (int i = 0; i < 7; ++i) {
+        const tb::Board b = pcHoleBoardFor(kAll[i]);
+        assert(tb::pcNextPiece(b, kAll[i]));
+        assert(!tb::pcNextPiece(b, tb::PIECE_NONE));
+    }
+
+    // shape discrimination: chirality distinguishes S from Z, size distinguishes O from I
+    assert(!tb::pcNextPiece(pcHoleBoardFor(tb::PIECE_S), tb::PIECE_Z));
+    assert(!tb::pcNextPiece(pcHoleBoardFor(tb::PIECE_O), tb::PIECE_I));
+
+    // vertical I well
+    {
+        static const char* rows[] = {"#########.", "#########.", "#########.", "#########."};
+        const tb::Board b = tb::boardFromAscii(rows, 4);
+        assert(tb::pcNextPiece(b, tb::PIECE_I));
+        assert(!tb::pcNextPiece(b, tb::PIECE_O));
+    }
+
+    // eight empties (two O holes): wrong count, false regardless of shape match
+    {
+        static const char* rows[] = {"####..##..", "####..##.."};
+        const tb::Board b = tb::boardFromAscii(rows, 2);
+        for (int i = 0; i < 7; ++i) assert(!tb::pcNextPiece(b, kAll[i]));
+    }
+
+    // scattered empties: right count, not a tetromino shape
+    {
+        static const char* rows[] = {"#.#.#.#.##"};
+        const tb::Board b = tb::boardFromAscii(rows, 1);
+        for (int i = 0; i < 7; ++i) assert(!tb::pcNextPiece(b, kAll[i]));
+    }
+}
+
 static void test_pc_solve_o_rain_two_line() {
     tb::Board b{};
     const tb::PieceType q[4] = {tb::PIECE_O, tb::PIECE_O, tb::PIECE_O, tb::PIECE_O};
@@ -3507,6 +3554,7 @@ int main() {
     RUN(test_pc_fillable_ok);
     RUN(test_pc_parity_ok);
     RUN(test_pc_solve_gated_boards_cost_zero_nodes);
+    RUN(test_pc_next_piece);
     RUN(test_pc_solve_o_rain_two_line);
     RUN(test_pc_solve_prefers_two_line_tiebreak);
     RUN(test_pc_solve_vertical_i_finish);

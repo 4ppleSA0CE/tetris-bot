@@ -12,6 +12,8 @@ bool pcFillableOk(const Board& b, int height);
 bool pcParityOk(const Board& b, int height, PieceType current, PieceType hold,
                 const PieceType* queue, int queueLen);
 
+bool pcNextPiece(const Board& b, PieceType p);
+
 struct PcResult {
     bool      valid;
     bool      aborted;
