@@ -100,6 +100,8 @@ struct Solver {
             if (hold != PIECE_NONE)
                 best = std::max(best, placeAndGo(b, hRem, hold, cur, qIdx, mask, depth));
             else
+                // stash-current: value-equal to (hold=cur, cur=draw); may double-hold
+                // in one turn, which the game cannot, but reachable sets are identical
                 best = std::max(best, expectNext(b, hRem, cur, qIdx, mask, depth));
         }
         if (!aborted) memo.emplace(key, best);
@@ -129,8 +131,10 @@ bool pcRegionsOk(const Board& b, int height) {
 PcResult pcSolveHeight(const Board& b, int height, PieceType current, PieceType hold,
                        const PieceType* queue, int queueLen, uint8_t bagMask,
                        const PcConfig& cfg) {
+    assert(height >= 1 && height <= 6);
+    bagMask = static_cast<uint8_t>(bagMask & FULL_BAG);
     PcResult res{};
-    auto s = std::make_unique<Solver>();
+    std::unique_ptr<Solver> s(new Solver);
     if (queueLen > 15) queueLen = 15;
     for (int i = 0; i < queueLen; ++i) s->known[s->knownLen++] = queue[i];
     s->nodeBudget = cfg.nodeBudget > 0 ? cfg.nodeBudget : 1000000000L;
@@ -139,6 +143,8 @@ PcResult pcSolveHeight(const Board& b, int height, PieceType current, PieceType 
                       std::chrono::duration<float, std::milli>(
                           cfg.timeBudgetMs > 0 ? cfg.timeBudgetMs : 1e9f));
 
+    // with empty hold and empty queue the stash line has no concrete move to
+    // return, so it is not offered at the root; real callers pass queueLen >= 5
     struct Root { PieceType piece; PieceType holdAfter; int qIdx; bool useHold; };
     Root opts[3];
     int nOpts = 0;
@@ -187,15 +193,18 @@ PcResult pcSolveHeight(const Board& b, int height, PieceType current, PieceType 
     if (res.valid) {
         res.useHold = bestOpt.useHold;
         // re-generate with paths and pick the exact same landing spot
+        bool found = false;
         MoveList full;
         generateMoves(b, bestOpt.piece, &full, true);
         for (int i = 0; i < full.count; ++i) {
             const Placement& pl = full.items[i];
             if (pl.x == bestPl.x && pl.y == bestPl.y && pl.rot == bestPl.rot) {
                 res.move = pl;
+                found = true;
                 break;
             }
         }
+        if (!found) res.valid = false;
     }
     return res;
 }
