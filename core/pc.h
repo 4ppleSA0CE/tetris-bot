@@ -7,6 +7,8 @@ namespace tb {
 
 bool pcRegionsOk(const Board& b, int height);
 
+bool pcFillableOk(const Board& b, int height);
+
 struct PcResult {
     bool      valid;
     bool      aborted;

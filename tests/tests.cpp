@@ -3022,6 +3022,51 @@ static void test_pc_regions_ok() {
     }
 }
 
+static void test_pc_fillable_ok() {
+    // 2-deep empty column walled on both sides: nothing reaches it
+    {
+        static const char* rows[] = {"##.#######",
+                                     "##.#######"};
+        const tb::Board b = tb::boardFromAscii(rows, 2);
+        assert(!tb::pcFillableOk(b, 2));
+    }
+    // 4-deep empty column at height 4: vertical I fills it
+    {
+        static const char* rows[] = {"#########.",
+                                     "#########.",
+                                     "#########.",
+                                     "#########."};
+        const tb::Board b = tb::boardFromAscii(rows, 4);
+        assert(tb::pcFillableOk(b, 4));
+    }
+    // single notch blocked left/right with floor below
+    {
+        static const char* rows[] = {"##.#######",
+                                     "##########"};
+        const tb::Board b = tb::boardFromAscii(rows, 2);
+        assert(!tb::pcFillableOk(b, 2));
+    }
+    // edge column counts the wall as a blocked side
+    {
+        static const char* rows[] = {".#########",
+                                     "##########"};
+        const tb::Board b = tb::boardFromAscii(rows, 2);
+        assert(!tb::pcFillableOk(b, 2));
+    }
+    // adjacent empties leave an open side -> fillable
+    {
+        static const char* rows[] = {"#..#######",
+                                     "##########"};
+        const tb::Board b = tb::boardFromAscii(rows, 2);
+        assert(tb::pcFillableOk(b, 2));
+    }
+    // empty board: every side is open
+    {
+        tb::Board b{};
+        assert(tb::pcFillableOk(b, 2));
+    }
+}
+
 static void test_pc_solve_o_rain_two_line() {
     tb::Board b{};
     const tb::PieceType q[4] = {tb::PIECE_O, tb::PIECE_O, tb::PIECE_O, tb::PIECE_O};
@@ -3373,6 +3418,7 @@ int main() {
     RUN(test_uniform_pacing);
     RUN(test_game_bot_instance_parity);
     RUN(test_pc_regions_ok);
+    RUN(test_pc_fillable_ok);
     RUN(test_pc_solve_o_rain_two_line);
     RUN(test_pc_solve_prefers_two_line_tiebreak);
     RUN(test_pc_solve_vertical_i_finish);

@@ -129,6 +129,28 @@ bool pcRegionsOk(const Board& b, int height) {
     return segEmpty % 4 == 0;
 }
 
+// necessary, not sufficient: an empty cell walled on both sides can only be
+// reached from within its own column, which no tetromino part does except a
+// vertical I in a fully empty column of a 4-high window
+bool pcFillableOk(const Board& b, int height) {
+    for (int c = 0; c < BOARD_W; ++c) {
+        uint32_t colEmpty = 0;
+        for (int y = 0; y < height; ++y)
+            if (!(b.rows[y] & (1u << c))) colEmpty |= 1u << y;
+        if (colEmpty == 0) continue;
+        if (height == 4 && colEmpty == 0xFu) continue;
+        bool anyOpen = false;
+        for (int y = 0; y < height && !anyOpen; ++y) {
+            if (!(colEmpty & (1u << y))) continue;
+            const bool leftOpen  = c > 0           && !(b.rows[y] & (1u << (c - 1)));
+            const bool rightOpen = c < BOARD_W - 1 && !(b.rows[y] & (1u << (c + 1)));
+            anyOpen = leftOpen || rightOpen;
+        }
+        if (!anyOpen) return false;
+    }
+    return true;
+}
+
 PcResult pcSolveHeight(const Board& b, int height, PieceType current, PieceType hold,
                        const PieceType* queue, int queueLen, uint8_t bagMask,
                        const PcConfig& cfg) {
