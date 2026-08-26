@@ -21,6 +21,7 @@ public:
     void setWeight(int index, float value);
 
     void setTimeBudget(float ms);
+    void setPcTimeBudget(float ms);
     void setNodeBudget(long n);
     void reset(uint32_t seed);
 

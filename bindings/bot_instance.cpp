@@ -67,6 +67,7 @@ void BotInstance::setWeight(int index, float value) {
 }
 
 void BotInstance::setTimeBudget(float ms) { cfg_.timeBudgetMs = ms; }
+void BotInstance::setPcTimeBudget(float ms) { cfg_.pc.timeBudgetMs = ms; }
 void BotInstance::setNodeBudget(long n) { cfg_.nodeBudget = n; }
 
 void BotInstance::reset(uint32_t seed) {

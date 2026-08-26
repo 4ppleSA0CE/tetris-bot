@@ -2581,6 +2581,7 @@ static void test_game_determinism() {
 
     tb::SearchConfig cfg;
     cfg.timeBudgetMs = 1e9f;
+    cfg.pc.timeBudgetMs = 1e9f;  // wall-clock abort must not diverge the twins
 
     tb::Game a(1234u, cfg);
     tb::Game b(1234u, cfg);
@@ -2806,11 +2807,13 @@ static void test_game_bot_instance_parity() {
     cfg.beamWidth    = 24;
     cfg.timeBudgetMs = 1.0e9f;
     cfg.nodeBudget   = 4500;
+    cfg.pc.timeBudgetMs = 1.0e9f;  // both sides must abort identically, i.e. never
 
     const uint32_t seed = 42;
     tb::Game        game(seed, cfg);
     tb::BotInstance bot(seed, 20.0f, cfg.depth, cfg.beamWidth);
     bot.setTimeBudget(cfg.timeBudgetMs);
+    bot.setPcTimeBudget(cfg.pc.timeBudgetMs);
     const tb::Snapshot* s = bot.snapshotPtr();
 
     const int kPieces = 500;
