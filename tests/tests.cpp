@@ -3168,7 +3168,6 @@ static void test_pc_plan_gate() {
                                  "#########."};
     const tb::Board b = tb::boardFromAscii(rows, 4);
     tb::SearchConfig cfg;
-    cfg.pc.threshold = 0.5f;
     tb::SearchResult out{};
 
     assert(tb::pcPlan(b, tb::PIECE_I, tb::PIECE_NONE, nullptr, 0, 0, 0, cfg, &out));
