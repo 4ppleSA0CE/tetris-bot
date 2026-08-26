@@ -1,6 +1,7 @@
 #include "core/search.h"
 #include "core/board.h"
 #include "core/attack.h"
+#include "core/pc.h"
 #include <algorithm>
 #include <chrono>
 
@@ -257,6 +258,13 @@ SearchResult search(const Board& b, PieceType current, PieceType hold,
                     }
                     float terminal = evaluate(child.board, cfg.weights, child.b2bCount,
                                               (int)child.remaining, tAvail);
+                    if (cfg.weights.pcNext != 0.0f) {
+                        const PieceType nextUp = (newQueueIdx < seqLen) ? seq[newQueueIdx]
+                                                                        : PIECE_NONE;
+                        if (pcNextPiece(child.board, nextUp) ||
+                            pcNextPiece(child.board, child.hold))
+                            terminal += cfg.weights.pcNext;
+                    }
                     if (aboveField(child.board)) terminal += TOPOUT_PENALTY;
                     child.score = child.pathReward + terminal;
 

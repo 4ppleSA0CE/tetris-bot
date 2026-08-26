@@ -112,6 +112,7 @@ Weights defaultWeights() {
     w.b2bBreak          = W_B2B_BREAK;
     w.wastedT           = W_WASTED_T;
     w.incomingRisk      = W_INCOMING_RISK;
+    w.pcNext            = W_PC_NEXT;
     return w;
 }
 
@@ -249,6 +250,7 @@ const WeightEntry kWeightTable[] = {
     { "b2bBreak",          &Weights::b2bBreak },
     { "wastedT",           &Weights::wastedT },
     { "incomingRisk",      &Weights::incomingRisk },
+    { "pcNext",            &Weights::pcNext },
 };
 constexpr int kWeightCount = static_cast<int>(sizeof(kWeightTable) / sizeof(kWeightTable[0]));
 

@@ -36,6 +36,7 @@ float* bindingsWeightSlot(Weights& w, int index) {
         case 18: return &w.b2bBreak;
         case 19: return &w.wastedT;
         case 20: return &w.incomingRisk;
+        case 21: return &w.pcNext;
         default: return nullptr;
     }
 }

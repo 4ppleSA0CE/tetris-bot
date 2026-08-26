@@ -45,6 +45,8 @@ struct Weights {
     float b2bBreak;
     float wastedT;
     float incomingRisk;
+
+    float pcNext;
 };
 
 Weights defaultWeights();

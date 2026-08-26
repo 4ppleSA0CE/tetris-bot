@@ -41,4 +41,6 @@ constexpr float W_WASTED_T    = -101.9f;
 
 constexpr float W_INCOMING_RISK = -34.3f;
 
+constexpr float W_PC_NEXT = 150.0f;
+
 }

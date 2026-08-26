@@ -2055,7 +2055,7 @@ static void test_weight_by_name() {
     assert(!tb::setWeightByName(w, "", 1.0f));
     assert(!tb::setWeightByName(w, "tSlotCounts", 1.0f));
 
-    assert(tb::weightNameCount() == 21);
+    assert(tb::weightNameCount() == 22);
     for (int i = 0; i < tb::weightNameCount(); ++i) {
         assert(tb::setWeightByName(w, tb::weightName(i), 1.0f));
     }
@@ -2071,7 +2071,7 @@ static void test_weight_by_name() {
     assert(tb::setWeightByName(v, "wastedT", -77.0f));
     assert(std::fabs(tb::weightValue(v, 19) - (-77.0f)) < 1e-6f);
     assert(std::fabs(tb::weightValue(v, 0) - tb::defaultWeights().holes) < 1e-6f);
-    assert(tb::weightValue(v, -1) == 0.0f && tb::weightValue(v, 21) == 0.0f);
+    assert(tb::weightValue(v, -1) == 0.0f && tb::weightValue(v, 22) == 0.0f);
 }
 
 static double msSince(std::chrono::steady_clock::time_point t0) {
@@ -2678,20 +2678,20 @@ static void test_snapshot_layout() {
 }
 
 static void test_weight_table() {
-    assert(tb::weightNameCount() == 21);
-    static const char* expected[21] = {
+    assert(tb::weightNameCount() == 22);
+    static const char* expected[22] = {
         "holes", "coveredCells", "bumpiness", "maxHeight", "heightPenalty",
         "rowTransitions", "columnTransitions", "wellDepth", "tSlotCount",
         "tslot1", "tslot2",
         "b2bActive", "b2bLevel", "attackDealt", "b2bCharge", "rowsWithHoles", "overhangs",
-        "plainClear", "b2bBreak", "wastedT", "incomingRisk"
+        "plainClear", "b2bBreak", "wastedT", "incomingRisk", "pcNext"
     };
     for (int i = 0; i < tb::weightNameCount(); ++i) {
         assert(std::string(tb::weightName(i)) == expected[i]);
     }
 
     assert(tb::weightName(-1)[0] == '\0');
-    assert(tb::weightName(21)[0] == '\0');
+    assert(tb::weightName(22)[0] == '\0');
 
     for (int i = 0; i < tb::weightNameCount(); ++i) {
         tb::Weights w = tb::defaultWeights();
@@ -2703,7 +2703,7 @@ static void test_weight_table() {
     }
     tb::Weights w = tb::defaultWeights();
     assert(tb::bindingsWeightSlot(w, -1) == nullptr);
-    assert(tb::bindingsWeightSlot(w, 21) == nullptr);
+    assert(tb::bindingsWeightSlot(w, 22) == nullptr);
     assert(tb::bindingsWeightSlot(w, 0) == &w.holes);
     assert(tb::bindingsWeightSlot(w, 13) == &w.attackDealt);
 }
@@ -3200,6 +3200,32 @@ static void test_pc_next_piece() {
     }
 }
 
+static void test_search_pc_next_steering() {
+    // two O-shaped holes (cols 4-5, cols 8-9), no clears possible either way
+    static const char* rows[] = {"####..##..", "####..##.."};
+    const tb::Board b = tb::boardFromAscii(rows, 2);
+    const tb::PieceType q[1] = {tb::PIECE_O};
+
+    tb::SearchConfig cfg;
+    cfg.depth      = 1;
+    cfg.beamWidth  = 8;
+    cfg.weights.pcNext = 1e6f;
+    const tb::SearchResult r = tb::search(b, tb::PIECE_O, tb::PIECE_NONE, q, 1, 0, 0, cfg);
+    assert(r.valid);
+    assert(r.score > 5e5f);
+
+    tb::SearchConfig control = cfg;
+    control.weights.pcNext = 0.0f;
+    const tb::SearchResult rc = tb::search(b, tb::PIECE_O, tb::PIECE_NONE, q, 1, 0, 0, control);
+    assert(rc.valid);
+    assert(rc.score < 5e5f);
+
+    tb::Weights w = tb::defaultWeights();
+    assert(tb::setWeightByName(w, "pcNext", 42.0f));
+    assert(std::fabs(tb::weightValue(w, tb::weightNameCount() - 1) - 42.0f) < 1e-6f);
+    assert(std::fabs(tb::defaultWeights().pcNext - tb::W_PC_NEXT) < 1e-6f);
+}
+
 static void test_pc_solve_o_rain_two_line() {
     tb::Board b{};
     const tb::PieceType q[4] = {tb::PIECE_O, tb::PIECE_O, tb::PIECE_O, tb::PIECE_O};
@@ -3555,6 +3581,7 @@ int main() {
     RUN(test_pc_parity_ok);
     RUN(test_pc_solve_gated_boards_cost_zero_nodes);
     RUN(test_pc_next_piece);
+    RUN(test_search_pc_next_steering);
     RUN(test_pc_solve_o_rain_two_line);
     RUN(test_pc_solve_prefers_two_line_tiebreak);
     RUN(test_pc_solve_vertical_i_finish);
