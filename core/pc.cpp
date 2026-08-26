@@ -131,7 +131,7 @@ bool pcRegionsOk(const Board& b, int height) {
 PcResult pcSolveHeight(const Board& b, int height, PieceType current, PieceType hold,
                        const PieceType* queue, int queueLen, uint8_t bagMask,
                        const PcConfig& cfg) {
-    assert(height >= 1 && height <= 6);
+    assert(height >= 1 && height <= 4);
     bagMask = static_cast<uint8_t>(bagMask & FULL_BAG);
     PcResult res{};
     std::unique_ptr<Solver> s(new Solver);
@@ -245,7 +245,7 @@ PcResult pcSolve(const Board& b, PieceType current, PieceType hold,
         if (best.prob >= 1.0f) break;
     }
     best.nodes   = totalNodes;
-    best.aborted = anyAborted;
+    best.aborted = anyAborted && best.prob < 1.0f;
     return best;
 }
 
