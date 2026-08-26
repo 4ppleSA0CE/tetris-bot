@@ -42,4 +42,11 @@ PieceType Bag::next() {
     return pieces_[index_++];
 }
 
+uint8_t Bag::remainingMask() const {
+    uint8_t m = 0;
+    for (int i = index_; i < NUM_PIECES; ++i)
+        m |= static_cast<uint8_t>(1u << pieces_[i]);
+    return m;
+}
+
 }

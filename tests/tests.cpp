@@ -748,6 +748,19 @@ static void test_bag_seed_zero_is_remapped_and_still_shuffles() {
     assert(sawDifferentBag);
 }
 
+static void test_bag_remaining_mask() {
+    tb::Bag bag(123u);
+    assert(bag.remainingMask() == 0);  // pre-refill: nothing pending
+
+    const tb::PieceType first = bag.next();
+    const uint8_t m = bag.remainingMask();
+    assert(__builtin_popcount(m) == 6);
+    assert((m & (1u << first)) == 0);
+
+    for (int i = 0; i < 6; ++i) bag.next();
+    assert(bag.remainingMask() == 0);  // bag exhausted again
+}
+
 static tb::ClearInfo ci(int lines, tb::SpinKind spin, bool perfectClear) {
     tb::ClearInfo c;
     c.lines = static_cast<uint8_t>(lines);
@@ -2992,6 +3005,7 @@ int main() {
     RUN(test_bag_different_seeds_diverge);
     RUN(test_bag_reset_replays_the_same_sequence);
     RUN(test_bag_seed_zero_is_remapped_and_still_shuffles);
+    RUN(test_bag_remaining_mask);
     RUN(test_attack_prd_table_without_b2b_or_combo);
     RUN(test_attack_b2b_bonus_is_applied);
     RUN(test_attack_b2b_bonus_is_not_applied);

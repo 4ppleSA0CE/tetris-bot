@@ -12,6 +12,7 @@ public:
     explicit Bag(uint32_t seed);
     PieceType next();
     void reset(uint32_t seed);
+    uint8_t remainingMask() const;
 
 private:
     void refill();
