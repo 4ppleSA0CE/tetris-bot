@@ -3143,6 +3143,17 @@ static void test_pc_solve_skips_undecidable_supply() {
     assert(r.nodes == 0);
 }
 
+static void test_pc_solver_node_budget_aborts() {
+    tb::Board b{};
+    const tb::PieceType q[4] = {tb::PIECE_O, tb::PIECE_O, tb::PIECE_O, tb::PIECE_O};
+    tb::PcConfig cfg;
+    cfg.nodeBudget = 2;  // cannot possibly finish a 5-piece solve
+    const tb::PcResult r = tb::pcSolve(b, tb::PIECE_O, tb::PIECE_NONE, q, 4, 0, cfg);
+    assert(!r.valid);
+    assert(r.aborted);
+    assert(r.nodes <= 8);  // stopped promptly; nodes now accumulate across both heights
+}
+
 int main() {
     RUN(test_types_constants);
     RUN(test_piece_cells_spawn_shapes);
@@ -3291,6 +3302,7 @@ int main() {
     RUN(test_pc_solve_guaranteed_forced_draw);
     RUN(test_pc_solve_unknown_refutes);
     RUN(test_pc_solve_skips_undecidable_supply);
+    RUN(test_pc_solver_node_budget_aborts);
     std::printf("all %d tests passed\n", g_testCount);
     return 0;
 }
