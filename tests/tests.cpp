@@ -3005,6 +3005,91 @@ static void test_pc_regions_ok() {
     }
 }
 
+static void test_pc_solve_o_rain_two_line() {
+    tb::Board b{};
+    const tb::PieceType q[4] = {tb::PIECE_O, tb::PIECE_O, tb::PIECE_O, tb::PIECE_O};
+    tb::PcConfig cfg;
+    const tb::PcResult r = tb::pcSolve(b, tb::PIECE_O, tb::PIECE_NONE, q, 4, 0, cfg);
+    assert(r.valid);
+    assert(r.prob == 1.0f);
+    assert(r.height == 2);
+    assert(!r.useHold);
+    assert(r.move.pathLen > 0);  // real path attached for the renderer
+}
+
+static void test_pc_solve_o_rain_four_line() {
+    tb::Board b{};
+    tb::PieceType q[9];
+    for (int i = 0; i < 9; ++i) q[i] = tb::PIECE_O;
+    tb::PcConfig cfg;
+    const tb::PcResult r = tb::pcSolve(b, tb::PIECE_O, tb::PIECE_NONE, q, 9, 0, cfg);
+    assert(r.valid);
+    assert(r.prob == 1.0f);
+    // ten O pieces tile 4x10; 2-line is also reachable with the first five, so
+    // height 2 wins the tie by being tried first
+    assert(r.height == 2);
+}
+
+static void test_pc_solve_vertical_i_finish() {
+    static const char* rows[] = {"#########.",
+                                 "#########.",
+                                 "#########.",
+                                 "#########."};
+    const tb::Board b = tb::boardFromAscii(rows, 4);
+    tb::PcConfig cfg;
+    const tb::PcResult r = tb::pcSolve(b, tb::PIECE_I, tb::PIECE_NONE, nullptr, 0, 0, cfg);
+    assert(r.valid);
+    assert(r.prob == 1.0f);
+    assert(r.height == 4);
+    assert(!r.useHold);
+}
+
+static void test_pc_solve_rejects_mod4() {
+    static const char* rows[] = {"#########."};  // 1 empty in row 0
+    const tb::Board b = tb::boardFromAscii(rows, 1);
+    tb::PcConfig cfg;
+    const tb::PcResult r = tb::pcSolve(b, tb::PIECE_I, tb::PIECE_NONE, nullptr, 0, 0, cfg);
+    assert(!r.valid);  // 11 and 31 empties -> no candidate height
+}
+
+static void test_pc_solve_s_cannot_fill_column() {
+    // 2-wide 4-high well at cols 8,9; supply is S,S -> impossible
+    static const char* rows[] = {"########..",
+                                 "########..",
+                                 "########..",
+                                 "########.."};
+    const tb::Board b = tb::boardFromAscii(rows, 4);
+    const tb::PieceType q[1] = {tb::PIECE_S};
+    tb::PcConfig cfg;
+    const tb::PcResult r = tb::pcSolve(b, tb::PIECE_S, tb::PIECE_NONE, q, 1, 0, cfg);
+    assert(!r.valid);
+}
+
+static void test_pc_solve_hold_swap() {
+    // 2x2 notch at cols 8,9; current S is useless, hold O completes
+    static const char* rows[] = {"########..",
+                                 "########.."};
+    const tb::Board b = tb::boardFromAscii(rows, 2);
+    tb::PcConfig cfg;
+    const tb::PcResult r = tb::pcSolve(b, tb::PIECE_S, tb::PIECE_O, nullptr, 0, 0, cfg);
+    assert(r.valid);
+    assert(r.prob == 1.0f);
+    assert(r.useHold);
+}
+
+static void test_pc_solve_empty_hold_defer() {
+    // same notch; hold empty, O is first in queue: root holds S and places O
+    static const char* rows[] = {"########..",
+                                 "########.."};
+    const tb::Board b = tb::boardFromAscii(rows, 2);
+    const tb::PieceType q[1] = {tb::PIECE_O};
+    tb::PcConfig cfg;
+    const tb::PcResult r = tb::pcSolve(b, tb::PIECE_S, tb::PIECE_NONE, q, 1, 0, cfg);
+    assert(r.valid);
+    assert(r.prob == 1.0f);
+    assert(r.useHold);
+}
+
 int main() {
     RUN(test_types_constants);
     RUN(test_piece_cells_spawn_shapes);
@@ -3142,6 +3227,13 @@ int main() {
     RUN(test_uniform_pacing);
     RUN(test_game_bot_instance_parity);
     RUN(test_pc_regions_ok);
+    RUN(test_pc_solve_o_rain_two_line);
+    RUN(test_pc_solve_o_rain_four_line);
+    RUN(test_pc_solve_vertical_i_finish);
+    RUN(test_pc_solve_rejects_mod4);
+    RUN(test_pc_solve_s_cannot_fill_column);
+    RUN(test_pc_solve_hold_swap);
+    RUN(test_pc_solve_empty_hold_defer);
     std::printf("all %d tests passed\n", g_testCount);
     return 0;
 }
