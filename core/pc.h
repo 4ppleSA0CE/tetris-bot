@@ -25,6 +25,7 @@ PcResult pcSolve(const Board& b, PieceType current, PieceType hold,
                  const PieceType* queue, int queueLen, uint8_t bagMask,
                  const PcConfig& cfg);
 
+// on false, out is untouched except nodes (solver cost when it ran)
 bool pcPlan(const Board& b, PieceType current, PieceType hold,
             const PieceType* queue, int queueLen, uint8_t bagMask,
             int pendingGarbage, const SearchConfig& cfg, SearchResult* out);

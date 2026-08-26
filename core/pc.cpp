@@ -257,7 +257,7 @@ bool pcPlan(const Board& b, PieceType current, PieceType hold,
     for (int c = 0; c < BOARD_W; ++c)
         if (columnHeight(b, c) > PC_MAX_HEIGHT) return false;
     const PcResult r = pcSolve(b, current, hold, queue, queueLen, bagMask, cfg.pc);
-    if (!r.valid) return false;
+    if (!r.valid) { out->nodes = r.nodes; return false; }
     out->placement = r.move;
     out->useHold   = r.useHold;
     out->valid     = true;

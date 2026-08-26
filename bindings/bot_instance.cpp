@@ -200,9 +200,12 @@ void BotInstance::plan() {
 
     SearchResult r{};
     if (!pcPlan(board_, current_, hold_, queue_, PREVIEW_LEN, bag_.remainingMask(),
-                pendingGarbage_, cfg_, &r))
+                pendingGarbage_, cfg_, &r)) {
+        const long pcNodes = r.nodes;
         r = search(board_, current_, hold_, queue_, PREVIEW_LEN,
                    b2bCount_, comboCount_, cfg_, pendingGarbage_);
+        r.nodes += pcNodes;
+    }
     if (!r.valid) { topOut(); return; }
 
     if (r.useHold) {

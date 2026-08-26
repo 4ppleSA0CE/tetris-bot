@@ -55,9 +55,12 @@ void Game::stepPiece() {
     const auto t0 = std::chrono::steady_clock::now();
     SearchResult r{};
     if (!pcPlan(board_, current_, hold_, queue_, PREVIEW_LEN, bag_.remainingMask(),
-                pendingGarbage_, cfg_, &r))
+                pendingGarbage_, cfg_, &r)) {
+        const long pcNodes = r.nodes;
         r = search(board_, current_, hold_, queue_, PREVIEW_LEN,
                    (int)b2bCount_, (int)comboCount_, cfg_, pendingGarbage_);
+        r.nodes += pcNodes;
+    }
     lastSearchMs_ = (float)std::chrono::duration<double, std::milli>(
                         std::chrono::steady_clock::now() - t0).count();
     lastSearchNodes_ = r.nodes;
