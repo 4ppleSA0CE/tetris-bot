@@ -4,12 +4,13 @@
 
 namespace tb {
 
+// necessary, not sufficient: full columns split the window into independently tileable segments
 bool pcRegionsOk(const Board& b, int height) {
     int segEmpty = 0;
     for (int c = 0; c < BOARD_W; ++c) {
         int colEmpty = 0;
         for (int y = 0; y < height; ++y)
-            if (!(b.rows[y] & (1u << c))) ++colEmpty;
+            if (!(b.rows[y] & static_cast<uint16_t>(1u << c))) ++colEmpty;
         if (colEmpty == 0) {
             if (segEmpty % 4 != 0) return false;
             segEmpty = 0;
