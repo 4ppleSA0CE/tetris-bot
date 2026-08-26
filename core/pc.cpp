@@ -12,6 +12,7 @@ namespace tb {
 namespace {
 
 constexpr int PC_MAX_DEPTH = 16;
+constexpr int PC_MAX_HEIGHT = 4;
 constexpr uint8_t FULL_BAG = 0x7F;
 
 bool tooHigh(PieceType p, const Placement& pl, int hRem) {
@@ -222,7 +223,7 @@ PcResult pcSolve(const Board& b, PieceType current, PieceType hold,
     bool anyAborted = false;
     const long budget = cfg.nodeBudget > 0 ? cfg.nodeBudget : 1000000000L;
     const int supply = 1 + queueLen + (hold != PIECE_NONE ? 1 : 0);
-    static const int HEIGHTS[2] = {2, 4};
+    static const int HEIGHTS[2] = {2, PC_MAX_HEIGHT};
     // ponytail: heights 2/4 only; add 6-line support if duel data ever demands it
     for (int hi = 0; hi < 2; ++hi) {
         const int H = HEIGHTS[hi];
@@ -254,7 +255,7 @@ bool pcPlan(const Board& b, PieceType current, PieceType hold,
             int pendingGarbage, const SearchConfig& cfg, SearchResult* out) {
     if (!cfg.pc.enabled || pendingGarbage > 0) return false;
     for (int c = 0; c < BOARD_W; ++c)
-        if (columnHeight(b, c) > 4) return false;
+        if (columnHeight(b, c) > PC_MAX_HEIGHT) return false;
     const PcResult r = pcSolve(b, current, hold, queue, queueLen, bagMask, cfg.pc);
     if (!r.valid) return false;
     out->placement = r.move;
