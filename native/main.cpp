@@ -50,9 +50,10 @@ void usage() {
                  "                  [--list-weights]\n"
                  "                  [--depth N] [--width N] [--budget MS] [--nodes N] [--heights]\n"
                  "                  [--weights name=value,...] [--garbage L/P] [--messiness F]\n"
+                 "                  [--pc on|off]\n"
                  "       tetris_bot --random [--seed N] [--pieces N] [--print] [--stats]\n"
                  "       tetris_bot --versus \"name=value,...\" [--seed N] [--seed2 M] [--nodes2 K]\n"
-                 "                  [--width2 N] [--depth2 N] [--json]\n"
+                 "                  [--width2 N] [--depth2 N] [--json] [--pc2 on|off]\n"
                  "       tetris_bot --movegen <fixture|all>\n"
                  "       tetris_bot --movegen-bench [iters]\n"
                  "\n"
@@ -377,13 +378,16 @@ static int runVersusMode(uint32_t seedA, uint32_t seedB, int maxPieces,
         std::printf("%-12s%5u vs %5u\n", "attack", A.attackSent(), B.attackSent());
         std::printf("%-12s%5u vs %5u\n", "garbage", A.garbageReceived(), B.garbageReceived());
         std::printf("%-12s%5u vs %5u\n", "max b2b", A.maxB2b(), B.maxB2b());
+        std::printf("%-12s%5u vs %5u\n", "PCs", A.pcCount(), B.pcCount());
     }
     if (json) {
         std::printf("{\"winner\":\"%s\",\"rounds\":%d,\"attackA\":%u,\"attackB\":%u,"
-                    "\"garbageA\":%u,\"garbageB\":%u,\"maxB2bA\":%u,\"maxB2bB\":%u}\n",
+                    "\"garbageA\":%u,\"garbageB\":%u,\"maxB2bA\":%u,\"maxB2bB\":%u,"
+                    "\"pcsA\":%u,\"pcsB\":%u}\n",
                     winner, rounds, A.attackSent(), B.attackSent(),
                     A.garbageReceived(), B.garbageReceived(),
-                    static_cast<unsigned>(A.maxB2b()), static_cast<unsigned>(B.maxB2b()));
+                    static_cast<unsigned>(A.maxB2b()), static_cast<unsigned>(B.maxB2b()),
+                    A.pcCount(), B.pcCount());
     }
     return 0;
 }
@@ -510,6 +514,7 @@ int main(int argc, char** argv) {
     const char* versusSpec = nullptr;
     int      pieces = 100;
     bool     stats = false, print = false, heights = false, randomMode = false, json = false;
+    bool     pc2Set = false, pc2On = false;
     int      garbageLines = 0, garbageEvery = 0;
     float    messiness = 0.05f;
     tb::SearchConfig cfg;
@@ -539,6 +544,18 @@ int main(int argc, char** argv) {
         else if (!std::strcmp(a, "--weights")) { if (!applyWeightSpec(cfg.weights, need("--weights"))) return 2; }
         else if (!std::strcmp(a, "--stats"))   stats = true;
         else if (!std::strcmp(a, "--dupes"))   cfg.measureDupes = true;
+        else if (!std::strcmp(a, "--pc")) {
+            const char* v = need("--pc");
+            if      (!std::strcmp(v, "on"))  cfg.pc.enabled = true;
+            else if (!std::strcmp(v, "off")) cfg.pc.enabled = false;
+            else { std::fprintf(stderr, "--pc wants on|off\n"); return 2; }
+        }
+        else if (!std::strcmp(a, "--pc2")) {
+            const char* v = need("--pc2");
+            if      (!std::strcmp(v, "on"))  { pc2Set = true; pc2On = true; }
+            else if (!std::strcmp(v, "off")) { pc2Set = true; pc2On = false; }
+            else { std::fprintf(stderr, "--pc2 wants on|off\n"); return 2; }
+        }
         else if (!std::strcmp(a, "--json"))    json = true;
         else if (!std::strcmp(a, "--list-weights")) {
 
@@ -591,6 +608,7 @@ int main(int argc, char** argv) {
         if (nodes2 > 0) { cfgB.nodeBudget = nodes2; cfgB.timeBudgetMs = 1000000000.0f; }
         if (width2 > 0) cfgB.beamWidth = width2;
         if (depth2 > 0) cfgB.depth = depth2;
+        if (pc2Set) cfgB.pc.enabled = pc2On;
         return runVersusMode(seed, seed2Set ? seed2 : seed + 7777u, pieces,
                              cfg, cfgB, messiness, stats || !json, json);
     }
@@ -606,6 +624,7 @@ int main(int argc, char** argv) {
     uint32_t topOuts = 0;
     uint32_t basePieces = 0, baseLines = 0, baseAttack = 0, baseTspins = 0, baseSurge = 0;
     uint32_t baseGarbage = 0;
+    uint32_t basePcs = 0;
     uint16_t maxB2b = 0;
     double   hSum = 0.0, hSumSq = 0.0;
     int      hMin = tb::BOARD_H + 1, hMax = 0;
@@ -642,6 +661,7 @@ int main(int argc, char** argv) {
             baseTspins += game.tSpinCount();
             baseSurge  += game.surgeSent();
             baseGarbage += game.garbageReceived();
+            basePcs += game.pcCount();
             game.reset(seed + topOuts);
         }
     }
@@ -652,6 +672,7 @@ int main(int argc, char** argv) {
     const uint32_t totalTspins = baseTspins + game.tSpinCount();
     const uint32_t totalSurge  = baseSurge  + game.surgeSent();
     const uint32_t totalGarbage = baseGarbage + game.garbageReceived();
+    const uint32_t totalPcs = basePcs + game.pcCount();
 
     std::sort(times.begin(), times.end());
     auto pct = [&](double p) -> double {
@@ -675,6 +696,7 @@ int main(int argc, char** argv) {
         std::printf("%-12s%5u   (%.2f / 100)\n", "spins", totalTspins, rate);
         std::printf("%-12s%5u\n", "max b2b", static_cast<unsigned>(maxB2b));
         std::printf("%-12s%5u\n", "surge", totalSurge);
+        std::printf("%-12s%5u\n", "PCs", totalPcs);
         if (garbageEvery > 0) std::printf("%-12s%5u\n", "garbage", totalGarbage);
         std::printf("%-12s%5u\n", "top-outs", topOuts);
         std::printf("%-12sp50 %.1f  p99 %.1f\n", "search ms", pct(0.50), pct(0.99));
@@ -692,10 +714,10 @@ int main(int argc, char** argv) {
 
     if (json) {
         std::printf("{\"pieces\":%u,\"lines\":%u,\"attack\":%u,\"spins\":%u,\"maxB2b\":%u,"
-                    "\"surge\":%u,\"topouts\":%u,\"garbage\":%u,\"p50\":%.3f,\"p99\":%.3f,"
+                    "\"surge\":%u,\"pcs\":%u,\"topouts\":%u,\"garbage\":%u,\"p50\":%.3f,\"p99\":%.3f,"
                     "\"avgHeight\":%.3f,\"maxHeight\":%d,\"nodes\":%.0f}\n",
                     totalPieces, totalLines, totalAttack, totalTspins,
-                    static_cast<unsigned>(maxB2b), totalSurge, topOuts, totalGarbage,
+                    static_cast<unsigned>(maxB2b), totalSurge, totalPcs, topOuts, totalGarbage,
                     pct(0.50), pct(0.99), hAvg, hMax, hN > 0.0 ? nodeSum / hN : 0.0);
     }
     return 0;
