@@ -5,7 +5,8 @@ const M = await createBotModule();
 
 const mk = () => M.botCreate(42, 5, 2, 8);
 
-for (let i = 0; i < 50; i++) M.botDestroy(mk());
+// warm up ticking too: the pc solver's first solve raises dlmalloc's break once
+for (let i = 0; i < 50; i++) { const h = mk(); M.botTick(h, 100); M.botDestroy(h); }
 
 const live0 = M.botLiveCount();
 const brk0 = M._sbrk(0);
