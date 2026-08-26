@@ -83,6 +83,7 @@ struct Solver {
             if (isEmpty(child)) return 1.0f;
             const int h2 = hRem - lines;
             if (!pcRegionsOk(child, h2)) continue;
+            if (!pcFillableOk(child, h2)) continue;
             const float v = expectNext(child, h2, holdAfter, qIdx, mask, depth + 1);
             if (v > best) best = v;
             if (best >= 1.0f) break;
@@ -265,6 +266,7 @@ PcResult pcSolveHeight(const Board& b, int height, PieceType current, PieceType 
             } else {
                 const int h2 = height - lines;
                 if (!pcRegionsOk(child, h2)) continue;
+                if (!pcFillableOk(child, h2)) continue;
                 v = s->expectNext(child, h2, opts[o].holdAfter, opts[o].qIdx,
                                   bagMask, 1);
             }
@@ -328,6 +330,8 @@ PcResult pcSolve(const Board& b, PieceType current, PieceType hold,
         // with empty hold consumes one extra draw, so this bounds unknowns to 1
         if (empties / 4 > supply) continue;
         if (!pcRegionsOk(b, H)) continue;
+        if (!pcFillableOk(b, H)) continue;
+        if (!pcParityOk(b, H, current, hold, queue, queueLen)) continue;
         PcConfig hcfg = cfg;
         hcfg.nodeBudget = budget > totalNodes ? budget - totalNodes : 1;
         if (timed) {

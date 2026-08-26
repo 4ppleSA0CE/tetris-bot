@@ -3126,6 +3126,33 @@ static void test_pc_parity_ok() {
     }
 }
 
+static void test_pc_solve_gated_boards_cost_zero_nodes() {
+    // fillable-hopeless: col 2's only empty cell is walled left/right under
+    // an overhang; passes regions+mod4, so only a fillable gate saves the budget
+    {
+        static const char* rows[] = {"..#.......",
+                                     ".#.######."};
+        const tb::Board b = tb::boardFromAscii(rows, 2);
+        const tb::PieceType q[4] = {tb::PIECE_O, tb::PIECE_O, tb::PIECE_O, tb::PIECE_O};
+        tb::PcConfig cfg;
+        const tb::PcResult r = tb::pcSolve(b, tb::PIECE_O, tb::PIECE_NONE, q, 4, 0, cfg);
+        assert(!r.valid);
+        assert(r.nodes == 0);
+    }
+    // parity-hopeless: column-parity imbalance of 1 with only I/O/S/Z on hand;
+    // passes regions+fillable+mod4, so only a parity gate saves the budget
+    {
+        static const char* rows[] = {"#.........",
+                                     "###......."};
+        const tb::Board b = tb::boardFromAscii(rows, 2);
+        const tb::PieceType q[4] = {tb::PIECE_O, tb::PIECE_S, tb::PIECE_Z, tb::PIECE_O};
+        tb::PcConfig cfg;
+        const tb::PcResult r = tb::pcSolve(b, tb::PIECE_I, tb::PIECE_NONE, q, 4, 0, cfg);
+        assert(!r.valid);
+        assert(r.nodes == 0);
+    }
+}
+
 static void test_pc_solve_o_rain_two_line() {
     tb::Board b{};
     const tb::PieceType q[4] = {tb::PIECE_O, tb::PIECE_O, tb::PIECE_O, tb::PIECE_O};
@@ -3479,6 +3506,7 @@ int main() {
     RUN(test_pc_regions_ok);
     RUN(test_pc_fillable_ok);
     RUN(test_pc_parity_ok);
+    RUN(test_pc_solve_gated_boards_cost_zero_nodes);
     RUN(test_pc_solve_o_rain_two_line);
     RUN(test_pc_solve_prefers_two_line_tiebreak);
     RUN(test_pc_solve_vertical_i_finish);
