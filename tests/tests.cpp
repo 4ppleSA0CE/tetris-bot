@@ -3065,6 +3065,11 @@ static void test_pc_fillable_ok() {
         tb::Board b{};
         assert(tb::pcFillableOk(b, 2));
     }
+    // empty board at height 40: exercises the 64-bit colEmpty path
+    {
+        tb::Board e{};
+        assert(tb::pcFillableOk(e, 40));
+    }
 }
 
 static void test_pc_parity_ok() {
@@ -3111,6 +3116,14 @@ static void test_pc_parity_ok() {
 
     // unknown draws stay conservative
     assert(tb::pcParityOk(b1, 2, tb::PIECE_O, tb::PIECE_NONE, nullptr, 0));
+
+    // empty board at height 40 with a long queue: exercises pool truncation
+    {
+        tb::Board e{};
+        tb::PieceType q15[15];
+        for (int i = 0; i < 15; ++i) q15[i] = tb::PIECE_O;
+        assert(tb::pcParityOk(e, 40, tb::PIECE_O, tb::PIECE_NONE, q15, 15));
+    }
 }
 
 static void test_pc_solve_o_rain_two_line() {

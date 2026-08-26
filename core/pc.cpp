@@ -134,14 +134,14 @@ bool pcRegionsOk(const Board& b, int height) {
 // vertical I in a fully empty column of a 4-high window
 bool pcFillableOk(const Board& b, int height) {
     for (int c = 0; c < BOARD_W; ++c) {
-        uint32_t colEmpty = 0;
+        uint64_t colEmpty = 0;
         for (int y = 0; y < height; ++y)
-            if (!(b.rows[y] & (1u << c))) colEmpty |= 1u << y;
+            if (!(b.rows[y] & (1u << c))) colEmpty |= 1ull << y;
         if (colEmpty == 0) continue;
         if (height == 4 && colEmpty == 0xFu) continue;
         bool anyOpen = false;
         for (int y = 0; y < height && !anyOpen; ++y) {
-            if (!(colEmpty & (1u << y))) continue;
+            if (!(colEmpty & (1ull << y))) continue;
             const bool leftOpen  = c > 0           && !(b.rows[y] & (1u << (c - 1)));
             const bool rightOpen = c < BOARD_W - 1 && !(b.rows[y] & (1u << (c + 1)));
             anyOpen = leftOpen || rightOpen;
@@ -188,7 +188,10 @@ bool pcParityOk(const Board& b, int height, PieceType current, PieceType hold,
     pool[poolLen++] = current;
     if (hold != PIECE_NONE) pool[poolLen++] = hold;
     const int take = std::min(queueLen, hold != PIECE_NONE ? need - 1 : need);
-    for (int i = 0; i < take; ++i) pool[poolLen++] = queue[i];
+    // dropping overflow only enlarges `unknowns` below, which relaxes the
+    // check (leans toward true), so truncating the pool is conservative-safe
+    for (int i = 0; i < take && poolLen < (int)(sizeof(pool) / sizeof(pool[0])); ++i)
+        pool[poolLen++] = queue[i];
 
     const int unknowns = std::max(0, need - poolLen);
     const int bench = poolLen + unknowns - need;
