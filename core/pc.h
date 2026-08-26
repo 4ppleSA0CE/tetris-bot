@@ -9,6 +9,7 @@ bool pcRegionsOk(const Board& b, int height);
 
 struct PcResult {
     bool      valid;
+    bool      aborted;
     float     prob;
     bool      useHold;
     int       height;

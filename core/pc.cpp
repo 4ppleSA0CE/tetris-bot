@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <cassert>
+#include <chrono>
 #include <memory>
 #include <unordered_map>
 
@@ -26,6 +27,7 @@ struct Solver {
     long      nodes = 0;
     long      nodeBudget = 0;
     bool      aborted = false;
+    std::chrono::steady_clock::time_point deadline;
     MoveList  moves[PC_MAX_DEPTH];
     std::unordered_map<uint64_t, float> memo;
 
@@ -67,7 +69,11 @@ struct Solver {
         generateMoves(b, piece, &ml, false);
         float best = 0.0f;
         for (int i = 0; i < ml.count && !aborted; ++i) {
-            if (++nodes > nodeBudget) { aborted = true; break; }
+            if (++nodes > nodeBudget ||
+                ((nodes & 2047) == 0 && std::chrono::steady_clock::now() > deadline)) {
+                aborted = true;
+                break;
+            }
             const Placement& pl = ml.items[i];
             if (tooHigh(piece, pl, hRem)) continue;
             Board child = b;
@@ -128,6 +134,10 @@ PcResult pcSolveHeight(const Board& b, int height, PieceType current, PieceType 
     if (queueLen > 15) queueLen = 15;
     for (int i = 0; i < queueLen; ++i) s->known[s->knownLen++] = queue[i];
     s->nodeBudget = cfg.nodeBudget > 0 ? cfg.nodeBudget : 1000000000L;
+    s->deadline = std::chrono::steady_clock::now() +
+                  std::chrono::duration_cast<std::chrono::steady_clock::duration>(
+                      std::chrono::duration<float, std::milli>(
+                          cfg.timeBudgetMs > 0 ? cfg.timeBudgetMs : 1e9f));
 
     struct Root { PieceType piece; PieceType holdAfter; int qIdx; bool useHold; };
     Root opts[3];
@@ -143,7 +153,12 @@ PcResult pcSolveHeight(const Board& b, int height, PieceType current, PieceType 
         MoveList& ml = s->moves[0];
         generateMoves(b, opts[o].piece, &ml, false);
         for (int i = 0; i < ml.count && !s->aborted; ++i) {
-            if (++s->nodes > s->nodeBudget) { s->aborted = true; break; }
+            if (++s->nodes > s->nodeBudget ||
+                ((s->nodes & 2047) == 0 &&
+                 std::chrono::steady_clock::now() > s->deadline)) {
+                s->aborted = true;
+                break;
+            }
             const Placement& pl = ml.items[i];
             if (tooHigh(opts[o].piece, pl, height)) continue;
             Board child = b;
@@ -164,10 +179,11 @@ PcResult pcSolveHeight(const Board& b, int height, PieceType current, PieceType 
         if (bestV >= 1.0f) break;
     }
 
-    res.prob   = bestV;
-    res.nodes  = s->nodes;
-    res.height = height;
-    res.valid  = bestV > 0.0f && (bestV >= 1.0f || !s->aborted);
+    res.prob    = bestV;
+    res.nodes   = s->nodes;
+    res.height  = height;
+    res.aborted = s->aborted;
+    res.valid   = bestV > 0.0f && (bestV >= 1.0f || !s->aborted);
     if (res.valid) {
         res.useHold = bestOpt.useHold;
         // re-generate with paths and pick the exact same landing spot
@@ -193,6 +209,9 @@ PcResult pcSolve(const Board& b, PieceType current, PieceType hold,
         if (h > maxH) maxH = h;
     }
     PcResult best{};
+    long totalNodes = 0;
+    bool anyAborted = false;
+    const long budget = cfg.nodeBudget > 0 ? cfg.nodeBudget : 1000000000L;
     static const int HEIGHTS[2] = {2, 4};
     // ponytail: heights 2/4 only; add 6-line support if duel data ever demands it
     for (int hi = 0; hi < 2; ++hi) {
@@ -203,11 +222,17 @@ PcResult pcSolve(const Board& b, PieceType current, PieceType hold,
         const int empties = H * BOARD_W - filled;
         if (empties == 0 || empties % 4 != 0) continue;
         if (!pcRegionsOk(b, H)) continue;
+        PcConfig hcfg = cfg;
+        hcfg.nodeBudget = budget > totalNodes ? budget - totalNodes : 1;
         const PcResult r = pcSolveHeight(b, H, current, hold, queue, queueLen,
-                                         bagMask, cfg);
+                                         bagMask, hcfg);
+        totalNodes += r.nodes;
+        anyAborted = anyAborted || r.aborted;
         if (r.valid && r.prob > best.prob) best = r;
         if (best.prob >= 1.0f) break;
     }
+    best.nodes   = totalNodes;
+    best.aborted = anyAborted;
     return best;
 }
 

@@ -9,6 +9,7 @@ struct PcConfig {
     bool  enabled    = true;
     float threshold  = 0.6f;
     long  nodeBudget = 200000;
+    float timeBudgetMs = 3.0f;
 };
 
 struct SearchConfig {
