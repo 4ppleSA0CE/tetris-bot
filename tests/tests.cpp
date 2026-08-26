@@ -2990,6 +2990,19 @@ static void test_pc_regions_ok() {
         tb::Board b{};
         assert(tb::pcRegionsOk(b, 2));
     }
+    // 2-high, col 0 filled on the top row only -> NOT a wall; 1 + 8 = 9 -> fail
+    {
+        static const char* rows[] = {"#....#####",
+                                     ".....#####"};
+        const tb::Board b = tb::boardFromAscii(rows, 2);
+        assert(!tb::pcRegionsOk(b, 2));
+    }
+    // leading segment of 1 fails at the wall even though the trailing 4 is clean
+    {
+        static const char* rows[] = {".#####...."};
+        const tb::Board b = tb::boardFromAscii(rows, 1);
+        assert(!tb::pcRegionsOk(b, 1));
+    }
 }
 
 int main() {
