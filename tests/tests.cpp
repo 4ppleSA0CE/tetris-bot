@@ -3215,6 +3215,26 @@ static void test_game_pc_determinism() {
     for (int y = 0; y < tb::BOARD_H; ++y) assert(a.board().rows[y] == c.board().rows[y]);
 }
 
+static void test_game_pc_solver_finds_pcs() {
+    tb::SearchConfig on;
+    on.nodeBudget = 2000;
+    on.timeBudgetMs = 1000000000.0f;
+    on.pc.timeBudgetMs = 1000000000.0f;
+    tb::SearchConfig off = on;
+    off.pc.enabled = false;
+
+    uint32_t pcsOn = 0, pcsOff = 0;
+    for (uint32_t seed = 1; seed <= 4; ++seed) {
+        tb::Game g1(seed, on), g2(seed, off);
+        for (int i = 0; i < 400 && !g1.toppedOut(); ++i) g1.stepPiece();
+        for (int i = 0; i < 400 && !g2.toppedOut(); ++i) g2.stepPiece();
+        pcsOn  += g1.pcCount();
+        pcsOff += g2.pcCount();
+    }
+    assert(pcsOn >= 1);
+    assert(pcsOn >= pcsOff);
+}
+
 int main() {
     RUN(test_types_constants);
     RUN(test_piece_cells_spawn_shapes);
@@ -3367,6 +3387,7 @@ int main() {
     RUN(test_pc_solver_node_budget_aborts);
     RUN(test_pc_plan_gate);
     RUN(test_game_pc_determinism);
+    RUN(test_game_pc_solver_finds_pcs);
     std::printf("all %d tests passed\n", g_testCount);
     return 0;
 }
