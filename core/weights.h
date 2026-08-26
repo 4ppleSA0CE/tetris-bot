@@ -41,6 +41,7 @@ constexpr float W_WASTED_T    = -101.9f;
 
 constexpr float W_INCOMING_RISK = -34.3f;
 
-constexpr float W_PC_NEXT = 150.0f;
+// duel-tuned 2026-08-26: 150 cost ~5% solo PCs vs 0 and was elo-neutral in versus
+constexpr float W_PC_NEXT = 0.0f;
 
 }
