@@ -19,6 +19,7 @@
 #include "core/eval.h"
 #include "core/search.h"
 #include "core/game.h"
+#include "core/pc.h"
 #include "bindings/snapshot.h"
 #include "bindings/bot_instance.h"
 #include <cmath>
@@ -2958,6 +2959,39 @@ static void test_starved_search_still_sweeps_the_root() {
     }
 }
 
+static void test_pc_regions_ok() {
+    // 1-high, cols 1-6 filled: segments {0}=1 and {7,8,9}=3 -> both fail mod 4
+    {
+        static const char* rows[] = {".######..."};
+        const tb::Board b = tb::boardFromAscii(rows, 1);
+        assert(!tb::pcRegionsOk(b, 1));
+    }
+    // 1-high, walls at 0-2 and 7-9, middle gap of 4 -> ok
+    {
+        static const char* rows[] = {"###....###"};
+        const tb::Board b = tb::boardFromAscii(rows, 1);
+        assert(tb::pcRegionsOk(b, 1));
+    }
+    // 1-high, wall at 4-5 splits 4 + 4 -> ok
+    {
+        static const char* rows[] = {"....##...."};
+        const tb::Board b = tb::boardFromAscii(rows, 1);
+        assert(tb::pcRegionsOk(b, 1));
+    }
+    // 2-high: col 0 full both rows is a wall; leaves 2*9=18 -> 18 % 4 != 0 -> fail
+    {
+        static const char* rows[] = {"#.........",
+                                     "#........."};
+        const tb::Board b = tb::boardFromAscii(rows, 2);
+        assert(!tb::pcRegionsOk(b, 2));
+    }
+    // empty 2-high board = one region of 20 -> ok
+    {
+        tb::Board b{};
+        assert(tb::pcRegionsOk(b, 2));
+    }
+}
+
 int main() {
     RUN(test_types_constants);
     RUN(test_piece_cells_spawn_shapes);
@@ -3094,6 +3128,7 @@ int main() {
     RUN(test_starved_search_still_sweeps_the_root);
     RUN(test_uniform_pacing);
     RUN(test_game_bot_instance_parity);
+    RUN(test_pc_regions_ok);
     std::printf("all %d tests passed\n", g_testCount);
     return 0;
 }

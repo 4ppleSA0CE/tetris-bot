@@ -5,6 +5,12 @@
 
 namespace tb {
 
+struct PcConfig {
+    bool  enabled    = true;
+    float threshold  = 0.6f;
+    long  nodeBudget = 200000;
+};
+
 struct SearchConfig {
 
     int   depth      = 7;
@@ -17,6 +23,7 @@ struct SearchConfig {
 
     bool  measureDupes = false;
     Weights weights  = defaultWeights();
+    PcConfig pc;
 };
 
 struct SearchResult {

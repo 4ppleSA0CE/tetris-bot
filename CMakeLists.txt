@@ -20,6 +20,7 @@ set(TB_CORE_SOURCES
     core/eval.cpp
     core/search.cpp
     core/game.cpp
+    core/pc.cpp
 )
 
 set(TB_BINDINGS_SOURCES
