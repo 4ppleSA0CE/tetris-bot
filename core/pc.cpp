@@ -221,6 +221,7 @@ PcResult pcSolve(const Board& b, PieceType current, PieceType hold,
     long totalNodes = 0;
     bool anyAborted = false;
     const long budget = cfg.nodeBudget > 0 ? cfg.nodeBudget : 1000000000L;
+    const int supply = 1 + queueLen + (hold != PIECE_NONE ? 1 : 0);
     static const int HEIGHTS[2] = {2, 4};
     // ponytail: heights 2/4 only; add 6-line support if duel data ever demands it
     for (int hi = 0; hi < 2; ++hi) {
@@ -230,6 +231,9 @@ PcResult pcSolve(const Board& b, PieceType current, PieceType hold,
         for (int y = 0; y < H; ++y) filled += __builtin_popcount(b.rows[y]);
         const int empties = H * BOARD_W - filled;
         if (empties == 0 || empties % 4 != 0) continue;
+        // >1 unknown slot makes the guaranteed search unterminating; a stash
+        // with empty hold consumes one extra draw, so this bounds unknowns to 1
+        if (empties / 4 > supply) continue;
         if (!pcRegionsOk(b, H)) continue;
         PcConfig hcfg = cfg;
         hcfg.nodeBudget = budget > totalNodes ? budget - totalNodes : 1;

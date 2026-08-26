@@ -3132,6 +3132,17 @@ static void test_pc_solve_unknown_refutes() {
     assert(r.prob == 0.0f);
 }
 
+static void test_pc_solve_skips_undecidable_supply() {
+    // empty board, one known piece: neither height is decidable, so the solver
+    // must refuse instantly instead of burning its budget on refutation
+    tb::Board b{};
+    tb::PcConfig cfg;
+    const tb::PcResult r = tb::pcSolve(b, tb::PIECE_O, tb::PIECE_NONE, nullptr, 0, 0x7F, cfg);
+    assert(!r.valid);
+    assert(!r.aborted);
+    assert(r.nodes == 0);
+}
+
 int main() {
     RUN(test_types_constants);
     RUN(test_piece_cells_spawn_shapes);
@@ -3279,6 +3290,7 @@ int main() {
     RUN(test_pc_solve_four_line_double_i);
     RUN(test_pc_solve_guaranteed_forced_draw);
     RUN(test_pc_solve_unknown_refutes);
+    RUN(test_pc_solve_skips_undecidable_supply);
     std::printf("all %d tests passed\n", g_testCount);
     return 0;
 }
