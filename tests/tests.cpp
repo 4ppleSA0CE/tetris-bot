@@ -3017,7 +3017,7 @@ static void test_pc_solve_o_rain_two_line() {
     assert(r.move.pathLen > 0);  // real path attached for the renderer
 }
 
-static void test_pc_solve_o_rain_four_line() {
+static void test_pc_solve_prefers_two_line_tiebreak() {
     tb::Board b{};
     tb::PieceType q[9];
     for (int i = 0; i < 9; ++i) q[i] = tb::PIECE_O;
@@ -3088,6 +3088,48 @@ static void test_pc_solve_empty_hold_defer() {
     assert(r.valid);
     assert(r.prob == 1.0f);
     assert(r.useHold);
+}
+
+static void test_pc_solve_four_line_double_i() {
+    // 2-wide 4-high well at cols 8,9: two vertical I pieces complete at H=4
+    static const char* rows[] = {"########..",
+                                 "########..",
+                                 "########..",
+                                 "########.."};
+    const tb::Board b = tb::boardFromAscii(rows, 4);
+    const tb::PieceType q[1] = {tb::PIECE_I};
+    tb::PcConfig cfg;
+    const tb::PcResult r = tb::pcSolve(b, tb::PIECE_I, tb::PIECE_NONE, q, 1, 0, cfg);
+    assert(r.valid);
+    assert(r.prob == 1.0f);
+    assert(r.height == 4);
+}
+
+static void test_pc_solve_guaranteed_forced_draw() {
+    // 4-wide 2-high notch; root places O leaving 2x2, sole unknown draw is O
+    static const char* rows[] = {"######....",
+                                 "######...."};
+    const tb::Board b = tb::boardFromAscii(rows, 2);
+    tb::PcConfig cfg;
+    const tb::PcResult r = tb::pcSolveHeight(b, 2, tb::PIECE_O, tb::PIECE_Z,
+                                             nullptr, 0, 1u << tb::PIECE_O, cfg);
+    assert(r.valid);
+    assert(r.prob == 1.0f);
+    assert(!r.useHold);
+}
+
+static void test_pc_solve_unknown_refutes() {
+    // same notch, unknown draw is O or I: the I branch cannot finish the 2x2,
+    // so under guaranteed semantics the line is refused outright
+    static const char* rows[] = {"######....",
+                                 "######...."};
+    const tb::Board b = tb::boardFromAscii(rows, 2);
+    tb::PcConfig cfg;
+    const uint8_t mask = static_cast<uint8_t>((1u << tb::PIECE_O) | (1u << tb::PIECE_I));
+    const tb::PcResult r = tb::pcSolveHeight(b, 2, tb::PIECE_O, tb::PIECE_Z,
+                                             nullptr, 0, mask, cfg);
+    assert(!r.valid);
+    assert(r.prob == 0.0f);
 }
 
 int main() {
@@ -3228,12 +3270,15 @@ int main() {
     RUN(test_game_bot_instance_parity);
     RUN(test_pc_regions_ok);
     RUN(test_pc_solve_o_rain_two_line);
-    RUN(test_pc_solve_o_rain_four_line);
+    RUN(test_pc_solve_prefers_two_line_tiebreak);
     RUN(test_pc_solve_vertical_i_finish);
     RUN(test_pc_solve_rejects_mod4);
     RUN(test_pc_solve_s_cannot_fill_column);
     RUN(test_pc_solve_hold_swap);
     RUN(test_pc_solve_empty_hold_defer);
+    RUN(test_pc_solve_four_line_double_i);
+    RUN(test_pc_solve_guaranteed_forced_draw);
+    RUN(test_pc_solve_unknown_refutes);
     std::printf("all %d tests passed\n", g_testCount);
     return 0;
 }

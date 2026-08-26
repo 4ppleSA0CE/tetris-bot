@@ -46,16 +46,18 @@ struct Solver {
                      uint8_t mask, int depth) {
         if (qIdx < knownLen)
             return solveCur(b, hRem, known[qIdx], hold, qIdx + 1, mask, depth);
+        // unknowns use guaranteed (min) semantics: the PC must survive every
+        // possible draw order; exact expectimax averaging is intractable here
         const uint8_t m = mask ? mask : FULL_BAG;
-        const int n = __builtin_popcount(m);
-        float sum = 0.0f;
+        float worst = 1.0f;
         for (int p = 0; p < NUM_PIECES; ++p) {
             if (!(m & (1u << p))) continue;
-            sum += solveCur(b, hRem, static_cast<PieceType>(p), hold, qIdx + 1,
-                            static_cast<uint8_t>(m & ~(1u << p)), depth);
-            if (aborted) break;
+            const float v = solveCur(b, hRem, static_cast<PieceType>(p), hold, qIdx + 1,
+                                     static_cast<uint8_t>(m & ~(1u << p)), depth);
+            if (v < worst) worst = v;
+            if (worst <= 0.0f || aborted) break;
         }
-        return sum / static_cast<float>(n);
+        return worst;
     }
 
     float placeAndGo(const Board& b, int hRem, PieceType piece, PieceType holdAfter,
