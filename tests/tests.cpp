@@ -3201,6 +3201,7 @@ static void test_game_pc_determinism() {
     assert(a.piecesPlaced() == c.piecesPlaced());
     assert(a.attackSent() == c.attackSent());
     assert(a.pcCount() == c.pcCount());
+    assert(a.pcCount() > 0);
     for (int y = 0; y < tb::BOARD_H; ++y) assert(a.board().rows[y] == c.board().rows[y]);
 }
 
