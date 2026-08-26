@@ -222,6 +222,10 @@ PcResult pcSolve(const Board& b, PieceType current, PieceType hold,
     long totalNodes = 0;
     bool anyAborted = false;
     const long budget = cfg.nodeBudget > 0 ? cfg.nodeBudget : 1000000000L;
+    // <= 0 and the 1e9 determinism pin both mean unlimited; splitting either
+    // would arm a real deadline where callers asked for none
+    const bool timed = cfg.timeBudgetMs > 0.0f && cfg.timeBudgetMs <= 1e8f;
+    const auto start = std::chrono::steady_clock::now();
     const int supply = 1 + queueLen + (hold != PIECE_NONE ? 1 : 0);
     static const int HEIGHTS[2] = {2, PC_MAX_HEIGHT};
     // ponytail: heights 2/4 only; add 6-line support if duel data ever demands it
@@ -238,6 +242,12 @@ PcResult pcSolve(const Board& b, PieceType current, PieceType hold,
         if (!pcRegionsOk(b, H)) continue;
         PcConfig hcfg = cfg;
         hcfg.nodeBudget = budget > totalNodes ? budget - totalNodes : 1;
+        if (timed) {
+            const float elapsedMs = std::chrono::duration<float, std::milli>(
+                std::chrono::steady_clock::now() - start).count();
+            const float left = cfg.timeBudgetMs - elapsedMs;
+            hcfg.timeBudgetMs = left > 0.1f ? left : 0.1f;
+        }
         const PcResult r = pcSolveHeight(b, H, current, hold, queue, queueLen,
                                          bagMask, hcfg);
         totalNodes += r.nodes;
