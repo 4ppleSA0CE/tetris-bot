@@ -2813,7 +2813,7 @@ static void test_game_bot_instance_parity() {
     tb::Game        game(seed, cfg);
     tb::BotInstance bot(seed, 20.0f, cfg.depth, cfg.beamWidth);
     bot.setTimeBudget(cfg.timeBudgetMs);
-    bot.setPcTimeBudget(cfg.pc.timeBudgetMs);
+    bot.setPcConfig(cfg.pc);
     const tb::Snapshot* s = bot.snapshotPtr();
 
     const int kPieces = 500;
