@@ -151,6 +151,69 @@ bool pcFillableOk(const Board& b, int height) {
     return true;
 }
 
+namespace {
+// checkerboard-coloring shift per piece: I flips 2 columns' parity, J/L/T flip 1
+int parityShift(PieceType p) {
+    switch (p) {
+        case PIECE_I: return 2;
+        case PIECE_J:
+        case PIECE_L:
+        case PIECE_T: return 1;
+        default: return 0;
+    }
+}
+}  // namespace
+
+// necessary, not sufficient: each piece shifts the even/odd column-fill imbalance
+// by a fixed amount, so a required shift beyond the known+unknown supply's reach
+// (or of the wrong achievable parity, when no T is available) proves a PC is impossible
+bool pcParityOk(const Board& b, int height, PieceType current, PieceType hold,
+                const PieceType* queue, int queueLen) {
+    int diff = 0;
+    int filled = 0;
+    for (int y = 0; y < height; ++y)
+        for (int c = 0; c < BOARD_W; ++c)
+            if (b.rows[y] & (1u << c)) {
+                ++filled;
+                diff += (c % 2 == 0) ? 1 : -1;
+            }
+
+    const int empties = height * BOARD_W - filled;
+    if (empties <= 0 || empties % 4 != 0) return true;
+    const int need = empties / 4;
+    const int parity = std::abs(diff) / 2;
+
+    PieceType pool[16];
+    int poolLen = 0;
+    pool[poolLen++] = current;
+    if (hold != PIECE_NONE) pool[poolLen++] = hold;
+    const int take = std::min(queueLen, hold != PIECE_NONE ? need - 1 : need);
+    for (int i = 0; i < take; ++i) pool[poolLen++] = queue[i];
+
+    const int unknowns = std::max(0, need - poolLen);
+    const int bench = poolLen + unknowns - need;
+
+    const auto feasible = [&](int skipIdx) {
+        int cap = unknowns * 2;
+        int countJL = 0;
+        bool hasT = false;
+        for (int i = 0; i < poolLen; ++i) {
+            if (i == skipIdx) continue;
+            cap += parityShift(pool[i]);
+            if (pool[i] == PIECE_J || pool[i] == PIECE_L) ++countJL;
+            if (pool[i] == PIECE_T) hasT = true;
+        }
+        if (parity > cap) return false;
+        if (unknowns == 0 && !hasT && (parity - countJL) % 2 != 0) return false;
+        return true;
+    };
+
+    if (bench == 0) return feasible(-1);
+    for (int i = 0; i < poolLen; ++i)
+        if (feasible(i)) return true;
+    return false;
+}
+
 PcResult pcSolveHeight(const Board& b, int height, PieceType current, PieceType hold,
                        const PieceType* queue, int queueLen, uint8_t bagMask,
                        const PcConfig& cfg) {

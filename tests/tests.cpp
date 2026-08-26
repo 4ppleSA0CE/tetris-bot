@@ -3067,6 +3067,52 @@ static void test_pc_fillable_ok() {
     }
 }
 
+static void test_pc_parity_ok() {
+    // cols 0 and 2 full 2-high: parity 2, O/S/Z shift nothing
+    static const char* parity2[] = {"#.#.......",
+                                    "#.#......."};
+    const tb::Board b2 = tb::boardFromAscii(parity2, 2);
+    {
+        const tb::PieceType q[4] = {tb::PIECE_O, tb::PIECE_O, tb::PIECE_O, tb::PIECE_O};
+        assert(!tb::pcParityOk(b2, 2, tb::PIECE_O, tb::PIECE_NONE, q, 4));
+    }
+    // vertical I shifts parity by 2
+    {
+        const tb::PieceType q[4] = {tb::PIECE_O, tb::PIECE_O, tb::PIECE_O, tb::PIECE_O};
+        assert(tb::pcParityOk(b2, 2, tb::PIECE_I, tb::PIECE_NONE, q, 4));
+    }
+    // I in hold works too
+    {
+        const tb::PieceType q[3] = {tb::PIECE_O, tb::PIECE_O, tb::PIECE_O};
+        assert(tb::pcParityOk(b2, 2, tb::PIECE_O, tb::PIECE_I, q, 3));
+    }
+
+    // odd parity (1): I changes by 0/2 and S/Z/O by 0, so it needs T or L/J
+    static const char* parity1[] = {"#.........",
+                                    "###......."};
+    const tb::Board b1 = tb::boardFromAscii(parity1, 2);
+    {
+        const tb::PieceType q[4] = {tb::PIECE_O, tb::PIECE_S, tb::PIECE_Z, tb::PIECE_O};
+        assert(!tb::pcParityOk(b1, 2, tb::PIECE_I, tb::PIECE_NONE, q, 4));
+        assert(tb::pcParityOk(b1, 2, tb::PIECE_T, tb::PIECE_NONE, q, 4));
+        assert(tb::pcParityOk(b1, 2, tb::PIECE_J, tb::PIECE_NONE, q, 4));
+    }
+
+    // empty 2-high board: a lone J among O's must shift parity but may not;
+    // with a long queue the J can be benched via hold
+    {
+        tb::Board e{};
+        const tb::PieceType q4[4] = {tb::PIECE_O, tb::PIECE_O, tb::PIECE_O, tb::PIECE_O};
+        assert(!tb::pcParityOk(e, 2, tb::PIECE_J, tb::PIECE_NONE, q4, 4));
+        const tb::PieceType q5[5] = {tb::PIECE_O, tb::PIECE_O, tb::PIECE_O, tb::PIECE_O,
+                                     tb::PIECE_O};
+        assert(tb::pcParityOk(e, 2, tb::PIECE_J, tb::PIECE_NONE, q5, 5));
+    }
+
+    // unknown draws stay conservative
+    assert(tb::pcParityOk(b1, 2, tb::PIECE_O, tb::PIECE_NONE, nullptr, 0));
+}
+
 static void test_pc_solve_o_rain_two_line() {
     tb::Board b{};
     const tb::PieceType q[4] = {tb::PIECE_O, tb::PIECE_O, tb::PIECE_O, tb::PIECE_O};
@@ -3419,6 +3465,7 @@ int main() {
     RUN(test_game_bot_instance_parity);
     RUN(test_pc_regions_ok);
     RUN(test_pc_fillable_ok);
+    RUN(test_pc_parity_ok);
     RUN(test_pc_solve_o_rain_two_line);
     RUN(test_pc_solve_prefers_two_line_tiebreak);
     RUN(test_pc_solve_vertical_i_finish);
