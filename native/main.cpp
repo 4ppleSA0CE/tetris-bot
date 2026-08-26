@@ -534,6 +534,7 @@ int main(int argc, char** argv) {
 
             cfg.nodeBudget   = parseIntArg("--nodes", need("--nodes"), 1, 2147483647L);
             cfg.timeBudgetMs = 1e9f;
+            cfg.pc.timeBudgetMs = 1e9f;
         }
         else if (!std::strcmp(a, "--weights")) { if (!applyWeightSpec(cfg.weights, need("--weights"))) return 2; }
         else if (!std::strcmp(a, "--stats"))   stats = true;
