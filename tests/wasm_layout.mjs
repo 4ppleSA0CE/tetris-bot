@@ -48,7 +48,7 @@ assert.equal(layout.pendingSpin.offset + 1, layout.pathProgress.offset,
 assert.equal(typeof M.botSetTimeBudget, 'function', 'botSetTimeBudget export missing');
 
 const weights = JSON.parse(M.getWeightsInfo());
-assert.equal(weights.length, 21, `expected 21 weights, got ${weights.length}`);
+assert.equal(weights.length, 22, `expected 22 weights, got ${weights.length}`);
 weights.forEach((w, i) => {
   assert.equal(w.index, i, `weight ${w.name} has index ${w.index}, expected ${i}`);
   assert.equal(typeof w.default, 'number');
@@ -57,7 +57,7 @@ assert.deepEqual(weights.map((w) => w.name), [
   'holes', 'coveredCells', 'bumpiness', 'maxHeight', 'heightPenalty',
   'rowTransitions', 'columnTransitions', 'wellDepth', 'tSlotCount', 'tslot1', 'tslot2',
   'b2bActive', 'b2bLevel', 'attackDealt', 'b2bCharge', 'rowsWithHoles', 'overhangs',
-  'plainClear', 'b2bBreak', 'wastedT', 'incomingRisk',
+  'plainClear', 'b2bBreak', 'wastedT', 'incomingRisk', 'pcNext',
 ]);
 
 const cells = JSON.parse(M.getPieceCells());
